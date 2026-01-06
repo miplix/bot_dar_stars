@@ -8,6 +8,9 @@ def get_main_menu() -> ReplyKeyboardMarkup:
     """Главное меню бота"""
     keyboard = [
         [KeyboardButton(text="🎁 Рассчитать дары")],
+        [KeyboardButton(text="🎭 Полный профиль")],
+        [KeyboardButton(text="📿 Сантры")],
+        [KeyboardButton(text="🔮 Анализ слов")],
         [KeyboardButton(text="💎 Подписка"), KeyboardButton(text="❓ Помощь")]
     ]
     return ReplyKeyboardMarkup(
@@ -51,6 +54,34 @@ def get_calculation_type_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🌙 Только Туна", callback_data="calc_tuna")],
         [InlineKeyboardButton(text="✨ Только Триа", callback_data="calc_tria")],
         [InlineKeyboardButton(text="💎 Только Чиа", callback_data="calc_chia")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_mantras_menu() -> InlineKeyboardMarkup:
+    """Меню работы с сантрами"""
+    keyboard = [
+        [InlineKeyboardButton(text="✨ Создать сантру (1 дар)", callback_data="mantra_create_1")],
+        [InlineKeyboardButton(text="✨ Создать сантру (2 дара)", callback_data="mantra_create_2")],
+        [InlineKeyboardButton(text="📝 Создать по запросу", callback_data="mantra_create_request")],
+        [InlineKeyboardButton(text="🔍 Анализировать сантру", callback_data="mantra_analyze")],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_mantra_create_options_menu() -> InlineKeyboardMarkup:
+    """Меню опций создания сантры"""
+    keyboard = [
+        [InlineKeyboardButton(text="✅ С самовоспроизведением", callback_data="mantra_with_end")],
+        [InlineKeyboardButton(text="❌ Без самовоспроизведения", callback_data="mantra_without_end")],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_to_mantras")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_alphabet_menu() -> InlineKeyboardMarkup:
+    """Меню анализа слов через алфавит"""
+    keyboard = [
+        [InlineKeyboardButton(text="✍️ Проанализировать слово", callback_data="alphabet_analyze")],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

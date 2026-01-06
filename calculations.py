@@ -1,9 +1,23 @@
 """
 Модуль для расчета даров по дате рождения
 Система Ма-Жи-Кун (Ма - день+месяц, Жи - год, Кун - сумма)
+Поддерживает расчет Ода, Туна, Триа и Чиа
 """
 from datetime import datetime
 from typing import Dict, Tuple
+
+# Кабалистическая таблица для расчета Чиа
+KABBALAH_TABLE = {
+    'а': 1, 'и': 1, 'с': 1, 'ъ': 1,
+    'б': 2, 'й': 2, 'т': 2, 'ы': 2,
+    'в': 3, 'к': 3, 'у': 3, 'ь': 3,
+    'г': 4, 'л': 4, 'ф': 4, 'э': 4,
+    'д': 5, 'м': 5, 'х': 5, 'ю': 5,
+    'е': 6, 'н': 6, 'ц': 6, 'я': 6,
+    'ё': 7, 'о': 7, 'ч': 7,
+    'ж': 8, 'п': 8, 'ш': 8,
+    'з': 9, 'р': 9, 'щ': 9
+}
 
 class GiftsCalculator:
     """Класс для расчета даров по дате рождения в системе Ма-Жи-Кун"""
@@ -16,6 +30,15 @@ class GiftsCalculator:
             return date_obj.day, date_obj.month, date_obj.year
         except ValueError:
             raise ValueError("Неверный формат даты. Используйте DD.MM.YYYY")
+    
+    @staticmethod
+    def parse_time(time_str: str) -> Tuple[int, int]:
+        """Парсинг времени в формате ЧЧ:ММ"""
+        try:
+            time_obj = datetime.strptime(time_str, "%H:%M")
+            return time_obj.hour, time_obj.minute
+        except ValueError:
+            raise ValueError("Неверный формат времени. Используйте ЧЧ:ММ")
     
     @staticmethod
     def sum_digits(number: int) -> int:
@@ -131,4 +154,252 @@ class GiftsCalculator:
         Для совместимости со старым API
         """
         return self.calculate_gift(birth_date)
+    
+    # ============ НОВЫЕ ФУНКЦИИ ДЛЯ КОМПЛЕКСНОГО РАСЧЕТА ============
+    
+    def calculate_oda(self, birth_date: str) -> Dict:
+        """
+        Расчет ОДА (основные данные)
+        По дате рождения: ДД.ММ.ГГГГ
+        Ма = д+д+м+м (≤9)
+        Жи = г+г+г+г (≤9)
+        Кун = ма+жи (≤9)
+        """
+        return self.calculate_gift(birth_date)
+    
+    def calculate_tuna(self, birth_time: str, kun_oda: int) -> Dict:
+        """
+        Расчет ТУНА (второстепенные данные)
+        По времени рождения: ЧЧ:ММ
+        Ма = кун от Ода
+        Жи = ч+ч+м+м (≤9)
+        Кун = ма+жи (≤9)
+        """
+        try:
+            hour, minute = self.parse_time(birth_time)
+            
+            # Ма = Кун из Ода
+            ma = kun_oda
+            
+            # Жи = сумма цифр часа и минут
+            ji_sum = self.sum_digits(hour) + self.sum_digits(minute)
+            ji = self.reduce_to_single_digit(ji_sum)
+            
+            # Кун
+            kun = self.calculate_kun(ma, ji)
+            
+            # Формируем детали расчета
+            ji_calculation = f"Жи = цифры({hour:02d}) + цифры({minute:02d}) = {self.sum_digits(hour)} + {self.sum_digits(minute)} = {ji_sum}"
+            if ji_sum > 9:
+                ji_calculation += f" → {ji}"
+            else:
+                ji_calculation += f" = {ji}"
+            
+            gift_code = f"{ma}-{ji}-{kun}"
+            
+            return {
+                "birth_time": birth_time,
+                "gift_code": gift_code,
+                "ma": ma,
+                "ji": ji,
+                "kun": kun,
+                "calculation_details": {
+                    "ma": f"Ма = Кун(Ода) = {ma}",
+                    "ji": ji_calculation,
+                    "kun": f"Кун = Ма + Жи = {ma} + {ji} = {kun}"
+                },
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def calculate_tria(self, latitude: float, longitude: float) -> Dict:
+        """
+        Расчет ТРИА
+        По координатам рождения (только целые числа градусов)
+        Ма = сумма цифр широты (≤9)
+        Жи = сумма цифр долготы (≤9)
+        Кун = ма+жи (≤9)
+        """
+        try:
+            # Берем только целые части координат
+            lat_int = abs(int(latitude))
+            lon_int = abs(int(longitude))
+            
+            # Ма = сумма цифр широты
+            ma_sum = self.sum_digits(lat_int)
+            ma = self.reduce_to_single_digit(ma_sum)
+            
+            # Жи = сумма цифр долготы
+            ji_sum = self.sum_digits(lon_int)
+            ji = self.reduce_to_single_digit(ji_sum)
+            
+            # Кун
+            kun = self.calculate_kun(ma, ji)
+            
+            # Формируем детали расчета
+            ma_calculation = f"Ма = цифры({lat_int}°) = {ma_sum}"
+            if ma_sum > 9:
+                ma_calculation += f" → {ma}"
+            else:
+                ma_calculation += f" = {ma}"
+                
+            ji_calculation = f"Жи = цифры({lon_int}°) = {ji_sum}"
+            if ji_sum > 9:
+                ji_calculation += f" → {ji}"
+            else:
+                ji_calculation += f" = {ji}"
+            
+            gift_code = f"{ma}-{ji}-{kun}"
+            
+            return {
+                "latitude": latitude,
+                "longitude": longitude,
+                "gift_code": gift_code,
+                "ma": ma,
+                "ji": ji,
+                "kun": kun,
+                "calculation_details": {
+                    "ma": ma_calculation,
+                    "ji": ji_calculation,
+                    "kun": f"Кун = Ма + Жи = {ma} + {ji} = {kun}"
+                },
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def calculate_chia(self, first_name: str, last_name: str) -> Dict:
+        """
+        Расчет ЧИА
+        По имени и фамилии (кабалистика)
+        Ма = сумма цифр имени (≤9)
+        Жи = сумма цифр фамилии (≤9)
+        Кун = ма+жи (≤9)
+        """
+        try:
+            # Нормализуем имя и фамилию (убираем пробелы, переводим в нижний регистр)
+            first_name = first_name.strip().lower()
+            last_name = last_name.strip().lower()
+            
+            # Рассчитываем Ма (имя)
+            ma_sum = 0
+            first_name_calc = []
+            for char in first_name:
+                if char in KABBALAH_TABLE:
+                    value = KABBALAH_TABLE[char]
+                    ma_sum += value
+                    first_name_calc.append(f"{char}={value}")
+            
+            ma = self.reduce_to_single_digit(ma_sum) if ma_sum > 0 else 1
+            
+            # Рассчитываем Жи (фамилия)
+            ji_sum = 0
+            last_name_calc = []
+            for char in last_name:
+                if char in KABBALAH_TABLE:
+                    value = KABBALAH_TABLE[char]
+                    ji_sum += value
+                    last_name_calc.append(f"{char}={value}")
+            
+            ji = self.reduce_to_single_digit(ji_sum) if ji_sum > 0 else 1
+            
+            # Кун
+            kun = self.calculate_kun(ma, ji)
+            
+            # Формируем детали расчета
+            ma_calculation = f"Ма = {first_name.upper()} = {'+'.join([str(KABBALAH_TABLE[c]) for c in first_name if c in KABBALAH_TABLE])} = {ma_sum}"
+            if ma_sum > 9:
+                ma_calculation += f" → {ma}"
+            else:
+                ma_calculation += f" = {ma}"
+            
+            ji_calculation = f"Жи = {last_name.upper()} = {'+'.join([str(KABBALAH_TABLE[c]) for c in last_name if c in KABBALAH_TABLE])} = {ji_sum}"
+            if ji_sum > 9:
+                ji_calculation += f" → {ji}"
+            else:
+                ji_calculation += f" = {ji}"
+            
+            gift_code = f"{ma}-{ji}-{kun}"
+            
+            return {
+                "first_name": first_name.capitalize(),
+                "last_name": last_name.capitalize(),
+                "gift_code": gift_code,
+                "ma": ma,
+                "ji": ji,
+                "kun": kun,
+                "calculation_details": {
+                    "ma": ma_calculation,
+                    "ji": ji_calculation,
+                    "kun": f"Кун = Ма + Жи = {ma} + {ji} = {kun}"
+                },
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    def calculate_complete_profile(self, birth_date: str, birth_time: str, 
+                                   latitude: float, longitude: float,
+                                   first_name: str, last_name: str) -> Dict:
+        """
+        Комплексный расчет всех четырех компонентов
+        
+        Args:
+            birth_date: Дата рождения (ДД.ММ.ГГГГ)
+            birth_time: Время рождения (ЧЧ:ММ)
+            latitude: Широта места рождения
+            longitude: Долгота места рождения
+            first_name: Имя
+            last_name: Фамилия
+        
+        Returns:
+            Словарь со всеми расчетами
+        """
+        try:
+            # Рассчитываем Ода
+            oda = self.calculate_oda(birth_date)
+            if oda['status'] == 'error':
+                return oda
+            
+            # Рассчитываем Туна (используем Кун из Ода)
+            tuna = self.calculate_tuna(birth_time, oda['kun'])
+            if tuna['status'] == 'error':
+                return tuna
+            
+            # Рассчитываем Триа
+            tria = self.calculate_tria(latitude, longitude)
+            if tria['status'] == 'error':
+                return tria
+            
+            # Рассчитываем Чиа
+            chia = self.calculate_chia(first_name, last_name)
+            if chia['status'] == 'error':
+                return chia
+            
+            return {
+                "status": "success",
+                "oda": oda,
+                "tuna": tuna,
+                "tria": tria,
+                "chia": chia,
+                "birth_date": birth_date,
+                "birth_time": birth_time,
+                "location": {"latitude": latitude, "longitude": longitude},
+                "name": {"first": first_name.capitalize(), "last": last_name.capitalize()}
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
 
