@@ -23,6 +23,7 @@ def get_subscription_menu() -> InlineKeyboardMarkup:
     """Меню подписок"""
     keyboard = [
         [InlineKeyboardButton(text="⭐️ Оформить премиум", callback_data="show_premium_options")],
+        [InlineKeyboardButton(text="🎁 Ввести промокод", callback_data="enter_promocode")],
         [InlineKeyboardButton(text="ℹ️ О подписках", callback_data="subscription_info")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -62,7 +63,6 @@ def get_mantras_menu() -> InlineKeyboardMarkup:
     keyboard = [
         [InlineKeyboardButton(text="✨ Создать сантру (1 дар)", callback_data="mantra_create_1")],
         [InlineKeyboardButton(text="✨ Создать сантру (2 дара)", callback_data="mantra_create_2")],
-        [InlineKeyboardButton(text="📝 Создать по запросу", callback_data="mantra_create_request")],
         [InlineKeyboardButton(text="🔍 Анализировать сантру", callback_data="mantra_analyze")],
         [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
     ]
@@ -82,6 +82,15 @@ def get_alphabet_menu() -> InlineKeyboardMarkup:
     keyboard = [
         [InlineKeyboardButton(text="✍️ Проанализировать слово", callback_data="alphabet_analyze")],
         [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_admin_menu() -> InlineKeyboardMarkup:
+    """Меню администратора"""
+    keyboard = [
+        [InlineKeyboardButton(text="➕ Создать промокод", callback_data="admin_create_promo")],
+        [InlineKeyboardButton(text="📋 Список промокодов", callback_data="admin_list_promos")],
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

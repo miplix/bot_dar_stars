@@ -28,7 +28,8 @@ class Database:
                     registration_date TEXT,
                     subscription_type TEXT DEFAULT 'trial',
                     subscription_end_date TEXT,
-                    is_active INTEGER DEFAULT 1
+                    is_active INTEGER DEFAULT 1,
+                    is_admin INTEGER DEFAULT 0
                 )
             """)
             
@@ -92,6 +93,41 @@ class Database:
                     description TEXT
                 )
             """)
+            
+            # Таблица промокодов
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS promocodes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT UNIQUE NOT NULL,
+                    type TEXT NOT NULL,
+                    discount_percent INTEGER,
+                    subscription_days INTEGER,
+                    max_uses INTEGER,
+                    current_uses INTEGER DEFAULT 0,
+                    created_date TEXT,
+                    created_by INTEGER,
+                    is_active INTEGER DEFAULT 1,
+                    FOREIGN KEY (created_by) REFERENCES users (user_id)
+                )
+            """)
+            
+            # Таблица использований промокодов
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS promocode_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    promocode_id INTEGER,
+                    user_id INTEGER,
+                    usage_date TEXT,
+                    FOREIGN KEY (promocode_id) REFERENCES promocodes (id),
+                    FOREIGN KEY (user_id) REFERENCES users (user_id)
+                )
+            """)
+            
+            # Миграция: добавление колонки is_admin, если её нет
+            cursor = await db.execute("PRAGMA table_info(users)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if 'is_admin' not in columns:
+                await db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
             
             await db.commit()
     
@@ -294,4 +330,139 @@ class Database:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute("SELECT * FROM alphabet ORDER BY id")
             return await cursor.fetchall()
+    
+    # ========== АДМИНИСТРАТИВНЫЕ ФУНКЦИИ ==========
+    
+    async def is_admin(self, user_id: int) -> bool:
+        """Проверка прав администратора"""
+        user = await self.get_user(user_id)
+        if user and user['is_admin'] == 1:
+            return True
+        return False
+    
+    async def set_admin(self, user_id: int, is_admin: bool = True):
+        """Выдать/снять права администратора"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE users SET is_admin = ? WHERE user_id = ?",
+                (1 if is_admin else 0, user_id)
+            )
+            await db.commit()
+    
+    async def get_all_admins(self):
+        """Получить список всех админов"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT user_id, username, first_name FROM users WHERE is_admin = 1"
+            )
+            return await cursor.fetchall()
+    
+    # ========== ПРОМОКОДЫ ==========
+    
+    async def create_promocode(self, code: str, promo_type: str, created_by: int,
+                               discount_percent: int = None, subscription_days: int = None,
+                               max_uses: int = None):
+        """Создание промокода
+        
+        Args:
+            code: Код промокода
+            promo_type: Тип ('discount' или 'subscription')
+            created_by: ID админа, создавшего промокод
+            discount_percent: Процент скидки (для discount)
+            subscription_days: Дни подписки (для subscription)
+            max_uses: Максимальное количество использований (None = безлимит)
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            created_date = datetime.now().isoformat()
+            await db.execute("""
+                INSERT INTO promocodes 
+                (code, type, discount_percent, subscription_days, max_uses, created_date, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (code, promo_type, discount_percent, subscription_days, max_uses, created_date, created_by))
+            await db.commit()
+    
+    async def get_promocode(self, code: str):
+        """Получение промокода по коду"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM promocodes WHERE code = ? AND is_active = 1", (code,)
+            )
+            return await cursor.fetchone()
+    
+    async def check_user_used_promocode(self, user_id: int, promocode_id: int) -> bool:
+        """Проверка, использовал ли пользователь промокод"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                SELECT COUNT(*) as count FROM promocode_usage 
+                WHERE user_id = ? AND promocode_id = ?
+            """, (user_id, promocode_id))
+            result = await cursor.fetchone()
+            return result[0] > 0
+    
+    async def use_promocode(self, user_id: int, promocode_id: int):
+        """Зарегистрировать использование промокода"""
+        async with aiosqlite.connect(self.db_path) as db:
+            usage_date = datetime.now().isoformat()
+            
+            # Добавляем запись об использовании
+            await db.execute("""
+                INSERT INTO promocode_usage (promocode_id, user_id, usage_date)
+                VALUES (?, ?, ?)
+            """, (promocode_id, user_id, usage_date))
+            
+            # Увеличиваем счетчик использований
+            await db.execute("""
+                UPDATE promocodes SET current_uses = current_uses + 1
+                WHERE id = ?
+            """, (promocode_id,))
+            
+            await db.commit()
+    
+    async def deactivate_promocode(self, code: str):
+        """Деактивировать промокод"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE promocodes SET is_active = 0 WHERE code = ?", (code,)
+            )
+            await db.commit()
+    
+    async def get_all_promocodes(self):
+        """Получить список всех промокодов"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("""
+                SELECT * FROM promocodes ORDER BY created_date DESC
+            """)
+            return await cursor.fetchall()
+    
+    async def get_promocode_stats(self, code: str):
+        """Получить статистику по промокоду"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            
+            # Получаем промокод
+            promo_cursor = await db.execute(
+                "SELECT * FROM promocodes WHERE code = ?", (code,)
+            )
+            promo = await promo_cursor.fetchone()
+            
+            if not promo:
+                return None
+            
+            # Получаем список использований
+            usage_cursor = await db.execute("""
+                SELECT u.username, u.first_name, pu.usage_date
+                FROM promocode_usage pu
+                JOIN users u ON pu.user_id = u.user_id
+                WHERE pu.promocode_id = ?
+                ORDER BY pu.usage_date DESC
+            """, (promo['id'],))
+            usage_list = await usage_cursor.fetchall()
+            
+            return {
+                'promocode': promo,
+                'usage_list': usage_list
+            }
 

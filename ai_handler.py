@@ -625,6 +625,145 @@ class AIHandler:
         
         return result
     
+    # ============= АНАЛИЗ САНТР ПО ЗАПРОСУ =============
+    
+    async def analyze_mantra_with_request(self, mantra_data: dict, user_request: str) -> str:
+        """
+        Анализ сантры через ИИ с учетом запроса пользователя
+        
+        Args:
+            mantra_data: Словарь с данными о сантре
+            user_request: Запрос пользователя (тема или вопрос)
+        
+        Returns:
+            Анализ сантры от ИИ с учетом запроса
+        """
+        if not self.api_key:
+            return self._get_basic_mantra_interpretation(mantra_data)
+        
+        # Формируем запрос к ИИ
+        prompt = self._build_mantra_request_prompt(mantra_data, user_request)
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                data = {
+                    "model": "deepseek-chat",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": """Ты духовный мастер и эксперт по сантрам - комбинациям команд и даров из древнеславянской системы Ма-Жи-Кун.
+
+Твоя задача - проанализировать предоставленную сантру в контексте запроса пользователя и строго сформировать ответ в следующей структуре:
+
+*[Название сантры жирным шрифтом без слова "Название:"]* - 2-3 слова, передающие суть в контексте запроса.
+
+*Смысл:* кратко, как эта сантра помогает решить запрос пользователя, как инструкция для внимания в теле.
+
+*Разбор:* объясни роль и ощущение от каждого ключевого элемента в контексте запроса и целого.
+
+*Течение внимания:* опиши пошагово, как внимание должно двигаться по телу для решения запроса, используя «начиная с...», «затем...», «позволяя...» (без нумерованных шагов).
+
+*Практика:* дай одно простое и безопасное упражнение для непосредственного чувствования этой сантры в теле здесь и сейчас, специально направленное на решение запроса пользователя.
+
+*Рекомендации:* дай 2-3 конкретные рекомендации, как применять эту сантру для достижения цели запроса.
+
+ВАЖНО! 
+- Весь ответ должен быть сфокусирован на запросе пользователя
+- Будь лаконичным, точным и ориентированным на телесное восприятие
+- Используй ТОЛЬКО Telegram-форматирование:
+  • *жирный текст* (одна звездочка)
+  • _курсив_ (одно подчеркивание)
+  • `код` (обратные кавычки)
+  • Эмодзи для структуры
+  • НЕ используй ## или ### или **
+- Отвечай только на русском языке
+- Опирайся на значения элементов из базы данных, но фокусируйся на решении запроса через телесный опыт"""
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    "temperature": 0.8,
+                    "max_tokens": 2500
+                }
+                
+                async with session.post(
+                    f"{self.api_url}/chat/completions",
+                    headers=headers,
+                    json=data
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return result['choices'][0]['message']['content']
+                    else:
+                        return self._get_basic_mantra_interpretation(mantra_data)
+        
+        except Exception as e:
+            print(f"Ошибка при анализе сантры через ИИ: {e}")
+            return self._get_basic_mantra_interpretation(mantra_data)
+    
+    def _build_mantra_request_prompt(self, mantra_data: dict, user_request: str) -> str:
+        """Построение промпта для анализа сантры с запросом"""
+        mantra_text = mantra_data.get("mantra", "")
+        elements = mantra_data.get("elements", [])
+        
+        prompt = f"""Пользователь запросил сантру для: *{user_request}*
+
+Проанализируй созданную сантру: *{mantra_text}*
+
+Структура сантры:
+"""
+        
+        for i, elem in enumerate(elements, 1):
+            elem_type = elem.get("type", "")
+            elem_name = elem.get("name", "")
+            elem_desc = elem.get("description", "")
+            
+            if elem_type == "команда":
+                position = elem.get("position", "")
+                prompt += f"\n{i}. *Команда: {elem_name}* (позиция: {position})\n"
+                prompt += f"   Описание: {elem_desc}\n"
+            elif elem_type == "дар":
+                code = elem.get("code", "")
+                ma_ji_kun = elem.get("ma_ji_kun", "")
+                prompt += f"\n{i}. *Дар: {elem_name}*\n"
+                if code:
+                    prompt += f"   Код: {code}\n"
+                if ma_ji_kun:
+                    prompt += f"   {ma_ji_kun}\n"
+                prompt += f"   Описание: {elem_desc}\n"
+            else:
+                prompt += f"\n{i}. *Неизвестный элемент: {elem_name}*\n"
+        
+        prompt += f"""
+---
+        
+Проанализируй эту сантру В КОНТЕКСТЕ ЗАПРОСА: "{user_request}"
+
+Строго следуй структуре ответа:
+
+*[Название сантры]* - 2-3 слова, передающие суть в контексте запроса "{user_request}".
+
+*Смысл:* как эта сантра помогает решить запрос "{user_request}" как инструкция для внимания в теле.
+
+*Разбор:* объясни роль и ощущение от каждого ключевого элемента в контексте запроса и целого.
+
+*Течение внимания:* как внимание должно двигаться по телу для решения запроса "{user_request}".
+
+*Практика:* упражнение для чувствования этой сантры, направленное на решение запроса "{user_request}".
+
+*Рекомендации:* 2-3 конкретные рекомендации по применению сантры для достижения цели "{user_request}".
+
+Будь лаконичным, точным и полностью сфокусируй ответ на решении запроса пользователя."""
+        
+        return prompt
+    
     async def get_response(self, prompt: str, user_id: int = None) -> str:
         """
         Универсальный метод для получения ответа от ИИ

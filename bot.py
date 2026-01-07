@@ -4,9 +4,12 @@
 import asyncio
 import logging
 import json
+import secrets
+import string
+import random
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
+from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -15,7 +18,7 @@ from config import Config
 from database import Database
 from calculations import GiftsCalculator
 from ai_handler import AIHandler
-from keyboards import get_main_menu, get_subscription_menu, get_premium_options_menu, get_mantras_menu, get_mantra_create_options_menu, get_alphabet_menu
+from keyboards import get_main_menu, get_subscription_menu, get_premium_options_menu, get_mantras_menu, get_mantra_create_options_menu, get_alphabet_menu, get_admin_menu
 from mantras import create_mantra_random, create_mantra_by_request, parse_mantra
 from alphabet_knowledge import AlphabetAnalyzer, check_if_gift_or_command
 
@@ -46,10 +49,19 @@ class UserStates(StatesGroup):
     
     # Состояния для работы с сантрами
     waiting_for_mantra_request = State()
+    waiting_for_mantra_by_theme = State()  # Ожидание выбора темы или ввода запроса
     waiting_for_mantra_to_analyze = State()
     
     # Состояния для работы с алфавитом
     waiting_for_word_to_analyze = State()
+    
+    # Состояния для промокодов
+    waiting_for_promocode = State()
+    
+    # Состояния для админов
+    waiting_for_promo_type = State()
+    waiting_for_promo_value = State()
+    waiting_for_promo_max_uses = State()
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -62,7 +74,7 @@ async def cmd_start(message: Message):
     await db.add_user(user_id, username, first_name)
     
     # Проверяем подписку
-    subscription = await db.check_subscription(user_id)
+    subscription = await check_subscription_with_admin(user_id)
     
     welcome_text = f"""👋 *Добро пожаловать, {first_name}!*
 
@@ -157,7 +169,7 @@ async def cmd_complete_calculate(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     # Проверяем подписку
-    subscription = await db.check_subscription(user_id)
+    subscription = await check_subscription_with_admin(user_id)
     if not subscription['active']:
         text = """⚠️ *Подписка не активна*
 
@@ -217,7 +229,7 @@ async def process_birth_date(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     # Проверяем подписку
-    subscription = await db.check_subscription(user_id)
+    subscription = await check_subscription_with_admin(user_id)
     if not subscription['active']:
         text = """⚠️ *Подписка не активна*
 
@@ -297,7 +309,7 @@ _Нажмите кнопку ниже для оформления подписк
 async def cmd_subscription(message: Message):
     """Информация о подписке"""
     user_id = message.from_user.id
-    subscription = await db.check_subscription(user_id)
+    subscription = await check_subscription_with_admin(user_id)
     
     if subscription['active']:
         text = f"""✅ *Ваша подписка активна*
@@ -619,7 +631,7 @@ async def show_premium_options(callback: CallbackQuery):
 async def back_to_subscription(callback: CallbackQuery):
     """Возврат к меню подписки"""
     user_id = callback.from_user.id
-    subscription = await db.check_subscription(user_id)
+    subscription = await check_subscription_with_admin(user_id)
     
     if subscription['active']:
         text = f"""✅ *Ваша подписка активна*
@@ -690,43 +702,61 @@ async def subscription_info(callback: CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(F.data == "buy_premium_test")
-async def buy_premium_test(callback: CallbackQuery):
+async def buy_premium_test(callback: CallbackQuery, state: FSMContext):
     """Покупка тестовой подписки на 1 день"""
+    data = await state.get_data()
+    discount = data.get('active_discount', 0)
+    promo_id = data.get('promo_id')
+    
     await send_invoice(
         callback.message,
         callback.from_user.id,
         "test",
         Config.PREMIUM_TEST_PRICE,
-        "Тестовая подписка на 1 день"
+        "Тестовая подписка на 1 день",
+        discount=discount,
+        promo_id=promo_id
     )
     await callback.answer()
 
 @dp.callback_query(F.data == "buy_premium_month")
-async def buy_premium_month(callback: CallbackQuery):
+async def buy_premium_month(callback: CallbackQuery, state: FSMContext):
     """Покупка подписки на месяц"""
+    data = await state.get_data()
+    discount = data.get('active_discount', 0)
+    promo_id = data.get('promo_id')
+    
     await send_invoice(
         callback.message,
         callback.from_user.id,
         "month",
         Config.PREMIUM_MONTH_PRICE,
-        "Премиум подписка на 1 месяц"
+        "Премиум подписка на 1 месяц",
+        discount=discount,
+        promo_id=promo_id
     )
     await callback.answer()
 
 @dp.callback_query(F.data == "buy_premium_year")
-async def buy_premium_year(callback: CallbackQuery):
+async def buy_premium_year(callback: CallbackQuery, state: FSMContext):
     """Покупка подписки на год"""
+    data = await state.get_data()
+    discount = data.get('active_discount', 0)
+    promo_id = data.get('promo_id')
+    
     await send_invoice(
         callback.message,
         callback.from_user.id,
         "year",
         Config.PREMIUM_YEAR_PRICE,
-        "Премиум подписка на 1 год"
+        "Премиум подписка на 1 год",
+        discount=discount,
+        promo_id=promo_id
     )
     await callback.answer()
 
 async def send_invoice(message: Message, user_id: int, subscription_type: str, 
-                      price: int, description: str):
+                      price: int, description: str, discount: int = 0, promo_id: int = None):
     """Отправка инвойса для оплаты"""
     
     # Формируем описание
@@ -740,14 +770,26 @@ async def send_invoice(message: Message, user_id: int, subscription_type: str,
         title = "Премиум - 1 год"
         desc = "Доступ ко всем функциям бота на 365 дней"
     
+    # Применяем скидку если есть
+    final_price = price
+    if discount > 0:
+        final_price = int(price * (100 - discount) / 100)
+        desc += f"\n💰 Скидка {discount}% применена!"
+        title += f" (скидка {discount}%)"
+    
     # Создаем инвойс
-    prices = [LabeledPrice(label=title, amount=price)]
+    prices = [LabeledPrice(label=title, amount=final_price)]
+    
+    # Сохраняем promo_id в payload если есть
+    payload = f"premium_{subscription_type}_{user_id}"
+    if promo_id:
+        payload += f"_promo{promo_id}"
     
     await bot.send_invoice(
         chat_id=user_id,
         title=title,
         description=desc,
-        payload=f"premium_{subscription_type}_{user_id}",
+        payload=payload,
         currency="XTR",  # Telegram Stars
         prices=prices
     )
@@ -758,14 +800,19 @@ async def pre_checkout_query_handler(pre_checkout_query: PreCheckoutQuery):
     await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 @dp.message(F.successful_payment)
-async def successful_payment_handler(message: Message):
+async def successful_payment_handler(message: Message, state: FSMContext):
     """Обработка успешной оплаты"""
     payment = message.successful_payment
     user_id = message.from_user.id
     
-    # Парсим payload для определения типа подписки
+    # Парсим payload для определения типа подписки и промокода
     payload_parts = payment.invoice_payload.split('_')
     subscription_type = payload_parts[1]  # test, month или year
+    
+    # Проверяем, был ли использован промокод со скидкой
+    promo_id = None
+    if len(payload_parts) > 3 and payload_parts[3].startswith('promo'):
+        promo_id = int(payload_parts[3].replace('promo', ''))
     
     # Определяем длительность подписки
     if subscription_type == "test":
@@ -792,6 +839,12 @@ async def successful_payment_handler(message: Message):
         subscription_type=type_name,
         status='completed'
     )
+    
+    # Если был использован промокод со скидкой, регистрируем использование
+    if promo_id:
+        await db.use_promocode(user_id, promo_id)
+        # Очищаем скидку из состояния
+        await state.update_data(active_discount=None, promo_id=None)
     
     # Отправляем подтверждение
     text = f"""✅ *Оплата успешно выполнена!*
@@ -990,6 +1043,205 @@ async def handle_mantra_request_create(callback: CallbackQuery, state: FSMContex
     await callback.message.answer("Выберите действие:", reply_markup=keyboard)
     await callback.answer()
 
+# ============= СОЗДАНИЕ САНТРЫ ПО ЗАПРОСУ С ВЫБОРОМ ТЕМЫ =============
+
+@dp.callback_query(F.data == "mantra_create_by_theme")
+async def handle_create_mantra_by_theme(callback: CallbackQuery, state: FSMContext):
+    """Начало создания сантры по запросу - показ тем"""
+    # Все доступные темы
+    all_themes = [
+        "здоровье", "семья", "деньги", "бизнес", "отношения",
+        "решение события", "ясность", "позиция здесь и сейчас",
+        "актуальная практика для меня"
+    ]
+    
+    # Выбираем случайно 3-4 темы
+    num_themes = random.randint(3, 4)
+    selected_themes = random.sample(all_themes, num_themes)
+    
+    # Создаем кнопки с темами
+    keyboard_buttons = []
+    for theme in selected_themes:
+        keyboard_buttons.append([InlineKeyboardButton(
+            text=f"💫 {theme.capitalize()}",
+            callback_data=f"theme_select_{theme}"
+        )])
+    
+    keyboard_buttons.append([InlineKeyboardButton(text="« Назад", callback_data="back_to_mantras")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    text = """📝 *Создание сантры по запросу*
+
+Выберите тему из предложенных ниже или напишите свой запрос:
+
+*Примеры своего запроса:*
+• "Нужна сантра для привлечения денег"
+• "Помоги с защитой"
+• "Хочу улучшить здоровье"
+
+Вы можете нажать на кнопку или написать свой запрос:"""
+    
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+    await state.set_state(UserStates.waiting_for_mantra_by_theme)
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("theme_select_"))
+async def handle_theme_selected(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора темы кнопкой"""
+    theme = callback.data.replace("theme_select_", "")
+    
+    # Сохраняем тему и создаем сантру
+    await create_and_analyze_mantra_by_theme(callback.message, state, theme, callback)
+
+@dp.message(UserStates.waiting_for_mantra_by_theme)
+async def handle_theme_text_input(message: Message, state: FSMContext):
+    """Обработка текстового ввода запроса"""
+    user_request = message.text.strip()
+    
+    if not user_request:
+        await message.answer("❌ Запрос не может быть пустым. Попробуйте еще раз:")
+        return
+    
+    # Создаем сантру по текстовому запросу
+    await create_and_analyze_mantra_by_theme(message, state, user_request, None)
+
+async def create_and_analyze_mantra_by_theme(message: Message, state: FSMContext, user_request: str, callback: CallbackQuery = None):
+    """Создание сантры по запросу и её анализ"""
+    user_id = message.from_user.id if callback is None else callback.from_user.id
+    
+    # Проверяем подписку
+    subscription = await check_subscription_with_admin(user_id)
+    if not subscription['active']:
+        text = """⚠️ *Подписка не активна*
+
+Для создания сантры по запросу необходима активная подписка.
+
+⭐️ *Премиум подписка:*
+📅 Месяц - {month_price} ⭐️
+📆 Год - {year_price} ⭐️
+
+🎁 Что вы получите:
+• Безлимитные расчеты даров
+• Создание сантр по запросу с ИИ
+• Полный анализ
+• Персональные рекомендации
+
+_Нажмите кнопку ниже для оформления подписки_""".format(
+            month_price=Config.PREMIUM_MONTH_PRICE,
+            year_price=Config.PREMIUM_YEAR_PRICE
+        )
+        
+        if callback:
+            await callback.message.edit_text(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        else:
+            await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        
+        await state.clear()
+        return
+    
+    # Создаем сантру (начало + между + дар + между + дар)
+    mantra_data = create_mantra_random(num_gifts=2, include_end=False)
+    
+    if "error" in mantra_data:
+        error_text = f"❌ Ошибка при создании сантры: {mantra_data['error']}"
+        if callback:
+            await callback.message.edit_text(error_text, reply_markup=get_mantras_menu())
+        else:
+            await message.answer(error_text, reply_markup=get_mantras_menu())
+        await state.clear()
+        return
+    
+    mantra_text = mantra_data.get("mantra", "")
+    
+    # Сохраняем в состояние для анализа
+    await state.update_data(
+        created_mantra=mantra_text,
+        user_request=user_request,
+        mantra_data=mantra_data
+    )
+    
+    # Формируем ответ с сантрой и запросом
+    result = f"""✨ *Сантра создана!*
+
+📝 *Ваш запрос:* _{user_request}_
+
+📿 *Сантра:* `{mantra_text}`
+
+💡 Нажмите кнопку ниже для анализа сантры с помощью ИИ в контексте вашего запроса."""
+    
+    # Кнопка для анализа
+    analyze_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🤖 Анализировать с ИИ", callback_data="analyze_mantra_by_theme")],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_to_mantras")]
+    ])
+    
+    # Отправляем результат
+    if callback:
+        await callback.message.edit_text(result, parse_mode="Markdown")
+        await callback.message.answer("Выберите действие:", reply_markup=analyze_keyboard)
+    else:
+        await message.answer(result, parse_mode="Markdown")
+        await message.answer("Выберите действие:", reply_markup=analyze_keyboard)
+    
+    await state.clear()
+    if callback:
+        await callback.answer()
+
+@dp.callback_query(F.data == "analyze_mantra_by_theme")
+async def handle_analyze_mantra_by_theme(callback: CallbackQuery, state: FSMContext):
+    """Анализ созданной сантры с учетом запроса пользователя"""
+    # Получаем данные из состояния
+    data = await state.get_data()
+    mantra_text = data.get("created_mantra", "")
+    user_request = data.get("user_request", "")
+    mantra_data = data.get("mantra_data", {})
+    
+    if not mantra_text or not mantra_data:
+        await callback.answer("❌ Данные сантры не найдены. Создайте новую сантру.", show_alert=True)
+        return
+    
+    # Отправляем сообщение о начале анализа
+    processing_msg = await callback.message.edit_text(
+        "🔮 Анализирую сантру с помощью ИИ в контексте вашего запроса...\n⏳ Пожалуйста, подождите..."
+    )
+    
+    try:
+        # Получаем анализ от ИИ с учетом запроса
+        interpretation = await ai_handler.analyze_mantra_with_request(mantra_data, user_request)
+        
+        # Удаляем сообщение о процессе
+        await processing_msg.delete()
+        
+        # Формируем полный ответ
+        full_result = f"""✨ *Анализ сантры по вашему запросу*
+
+📝 *Запрос:* _{user_request}_
+
+📿 *Сантра:* `{mantra_text}`
+
+━━━━━━━━━━━━━━━━━━
+
+{interpretation}"""
+        
+        # Отправляем результат
+        await callback.message.answer(full_result, parse_mode="Markdown")
+        
+        # Кнопки для дальнейших действий
+        next_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Создать еще", callback_data="mantra_create_by_theme")],
+            [InlineKeyboardButton(text="« Назад в меню", callback_data="back_to_mantras")]
+        ])
+        
+        await callback.message.answer("Выберите действие:", reply_markup=next_keyboard)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при анализе сантры: {e}")
+        await processing_msg.edit_text(
+            f"❌ Произошла ошибка при анализе: {str(e)}",
+            reply_markup=get_mantras_menu()
+        )
+    
+    await callback.answer()
 
 @dp.callback_query(F.data == "mantra_analyze")
 async def handle_mantra_analyze(callback: CallbackQuery, state: FSMContext):
@@ -1214,6 +1466,360 @@ async def back_to_alphabet(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=get_alphabet_menu(), parse_mode="Markdown")
     await callback.answer()
 
+# ========== ПРОМОКОДЫ ==========
+
+@dp.callback_query(F.data == "enter_promocode")
+async def enter_promocode_handler(callback: CallbackQuery, state: FSMContext):
+    """Начало ввода промокода"""
+    await callback.message.answer(
+        "🎁 *Введите промокод*\n\nОтправьте код для активации скидки или бесплатной подписки:",
+        parse_mode="Markdown"
+    )
+    await state.set_state(UserStates.waiting_for_promocode)
+    await callback.answer()
+
+@dp.message(UserStates.waiting_for_promocode)
+async def process_promocode(message: Message, state: FSMContext):
+    """Обработка введенного промокода"""
+    user_id = message.from_user.id
+    code = message.text.strip().upper()
+    
+    # Получаем промокод
+    promo = await db.get_promocode(code)
+    
+    if not promo:
+        await message.answer(
+            "❌ *Промокод не найден*\n\nПроверьте правильность ввода и попробуйте снова.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        await state.clear()
+        return
+    
+    # Проверяем, использовал ли пользователь этот промокод
+    if await db.check_user_used_promocode(user_id, promo['id']):
+        await message.answer(
+            "❌ *Промокод уже использован*\n\nВы уже активировали этот промокод ранее.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        await state.clear()
+        return
+    
+    # Проверяем лимит использований
+    if promo['max_uses'] is not None and promo['current_uses'] >= promo['max_uses']:
+        await message.answer(
+            "❌ *Промокод исчерпан*\n\nЭтот промокод больше недоступен для использования.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        await state.clear()
+        return
+    
+    # Применяем промокод
+    if promo['type'] == 'subscription':
+        # Выдаем подписку
+        days = promo['subscription_days']
+        end_date = await db.update_subscription(user_id, 'premium_promo', days)
+        
+        # Регистрируем использование
+        await db.use_promocode(user_id, promo['id'])
+        
+        await message.answer(
+            f"✅ *Промокод активирован!*\n\n"
+            f"🎉 Вам выдана подписка на *{days} дней*!\n"
+            f"💫 Действительна до: `{end_date.strftime('%d.%m.%Y %H:%M')}`\n\n"
+            f"Теперь у вас безлимитный доступ ко всем функциям бота!",
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
+        )
+    
+    elif promo['type'] == 'discount':
+        # Сохраняем скидку в состоянии для следующей оплаты
+        await state.update_data(active_discount=promo['discount_percent'], promo_id=promo['id'])
+        
+        await message.answer(
+            f"✅ *Промокод активирован!*\n\n"
+            f"💰 Вам доступна скидка *{promo['discount_percent']}%* на следующую покупку!\n\n"
+            f"Перейдите в меню оформления подписки для применения скидки.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+    
+    await state.clear()
+
+# ========== АДМИН-ПАНЕЛЬ ==========
+
+@dp.message(Command("admin"))
+async def cmd_admin(message: Message):
+    """Админ-панель"""
+    user_id = message.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await message.answer("❌ У вас нет прав доступа к админ-панели.")
+        return
+    
+    text = """👑 *Админ-панель*
+
+Управление промокодами и статистика бота.
+
+Выберите действие:"""
+    
+    await message.answer(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+
+@dp.callback_query(F.data == "admin_create_promo")
+async def admin_create_promo_start(callback: CallbackQuery, state: FSMContext):
+    """Начало создания промокода"""
+    user_id = callback.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton(text="🎁 Подписка", callback_data="promo_type_subscription")],
+        [InlineKeyboardButton(text="💰 Скидка", callback_data="promo_type_discount")],
+        [InlineKeyboardButton(text="« Отмена", callback_data="admin_cancel")]
+    ]
+    
+    await callback.message.edit_text(
+        "📝 *Создание промокода*\n\nВыберите тип промокода:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("promo_type_"))
+async def admin_promo_type_selected(callback: CallbackQuery, state: FSMContext):
+    """Выбор типа промокода"""
+    user_id = callback.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    promo_type = callback.data.replace("promo_type_", "")
+    await state.update_data(promo_type=promo_type)
+    
+    if promo_type == "subscription":
+        await callback.message.edit_text(
+            "📝 *Создание промокода: Подписка*\n\n"
+            "Введите количество дней подписки (например: 30):",
+            parse_mode="Markdown"
+        )
+    else:
+        await callback.message.edit_text(
+            "📝 *Создание промокода: Скидка*\n\n"
+            "Введите процент скидки (например: 20):",
+            parse_mode="Markdown"
+        )
+    
+    await state.set_state(UserStates.waiting_for_promo_value)
+    await callback.answer()
+
+@dp.message(UserStates.waiting_for_promo_value)
+async def admin_promo_value_entered(message: Message, state: FSMContext):
+    """Обработка значения промокода"""
+    user_id = message.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await message.answer("❌ Нет доступа")
+        await state.clear()
+        return
+    
+    try:
+        value = int(message.text.strip())
+        
+        data = await state.get_data()
+        promo_type = data['promo_type']
+        
+        if promo_type == 'discount' and (value < 1 or value > 100):
+            await message.answer("❌ Скидка должна быть от 1 до 100%")
+            return
+        
+        if promo_type == 'subscription' and value < 1:
+            await message.answer("❌ Количество дней должно быть больше 0")
+            return
+        
+        await state.update_data(promo_value=value)
+        
+        await message.answer(
+            "📝 *Ограничение использований*\n\n"
+            "Введите максимальное количество использований промокода\n"
+            "(отправьте 0 для безлимита):",
+            parse_mode="Markdown"
+        )
+        await state.set_state(UserStates.waiting_for_promo_max_uses)
+        
+    except ValueError:
+        await message.answer("❌ Введите число!")
+
+@dp.message(UserStates.waiting_for_promo_max_uses)
+async def admin_promo_max_uses_entered(message: Message, state: FSMContext):
+    """Обработка лимита использований и создание промокода"""
+    user_id = message.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await message.answer("❌ Нет доступа")
+        await state.clear()
+        return
+    
+    try:
+        max_uses = int(message.text.strip())
+        
+        if max_uses < 0:
+            await message.answer("❌ Количество должно быть >= 0")
+            return
+        
+        # Генерируем код
+        code = generate_promocode()
+        
+        data = await state.get_data()
+        promo_type = data['promo_type']
+        value = data['promo_value']
+        
+        # Создаем промокод
+        if promo_type == 'subscription':
+            await db.create_promocode(
+                code=code,
+                promo_type='subscription',
+                created_by=user_id,
+                subscription_days=value,
+                max_uses=max_uses if max_uses > 0 else None
+            )
+            type_desc = f"🎁 Подписка на {value} дней"
+        else:
+            await db.create_promocode(
+                code=code,
+                promo_type='discount',
+                created_by=user_id,
+                discount_percent=value,
+                max_uses=max_uses if max_uses > 0 else None
+            )
+            type_desc = f"💰 Скидка {value}%"
+        
+        uses_desc = "♾ Безлимит" if max_uses == 0 else f"🔢 {max_uses} использований"
+        
+        await message.answer(
+            f"✅ *Промокод создан!*\n\n"
+            f"🎟 Код: `{code}`\n"
+            f"{type_desc}\n"
+            f"{uses_desc}\n\n"
+            f"Пользователи могут ввести этот код в разделе подписок.",
+            reply_markup=get_admin_menu(),
+            parse_mode="Markdown"
+        )
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Введите число!")
+
+@dp.callback_query(F.data == "admin_list_promos")
+async def admin_list_promos(callback: CallbackQuery):
+    """Список промокодов"""
+    user_id = callback.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    promos = await db.get_all_promocodes()
+    
+    if not promos:
+        await callback.message.edit_text(
+            "📋 *Список промокодов*\n\nПромокодов пока нет.",
+            reply_markup=get_admin_menu(),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+        return
+    
+    text = "📋 *Список промокодов*\n\n"
+    
+    for promo in promos[:20]:  # Показываем первые 20
+        status = "✅" if promo['is_active'] else "❌"
+        
+        if promo['type'] == 'subscription':
+            type_desc = f"🎁 {promo['subscription_days']}д"
+        else:
+            type_desc = f"💰 {promo['discount_percent']}%"
+        
+        uses = f"{promo['current_uses']}"
+        if promo['max_uses']:
+            uses += f"/{promo['max_uses']}"
+        else:
+            uses += "/∞"
+        
+        text += f"{status} `{promo['code']}` - {type_desc} ({uses})\n"
+    
+    if len(promos) > 20:
+        text += f"\n_... и еще {len(promos) - 20} кодов_"
+    
+    await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+    await callback.answer()
+
+@dp.callback_query(F.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    """Статистика"""
+    user_id = callback.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    # Получаем статистику подписок
+    stats = await db.get_subscription_stats()
+    
+    text = "📊 *Статистика бота*\n\n"
+    
+    total_users = 0
+    active_users = 0
+    
+    for row in stats:
+        sub_type = row[0]
+        count = row[1]
+        active_count = row[2]
+        
+        total_users += count
+        active_users += active_count
+        
+        text += f"*{sub_type}*: {count} ({active_count} активных)\n"
+    
+    text += f"\n*Всего*: {total_users} пользователей\n"
+    text += f"*Активных*: {active_users} подписок"
+    
+    await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+    await callback.answer()
+
+@dp.callback_query(F.data == "admin_cancel")
+async def admin_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена админской операции"""
+    await state.clear()
+    await callback.message.edit_text(
+        "👑 *Админ-панель*\n\nОперация отменена.",
+        reply_markup=get_admin_menu(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+def generate_promocode(length: int = 12) -> str:
+    """Генерация случайного промокода"""
+    # Используем буквы и цифры, исключая похожие символы (0, O, I, 1, l)
+    chars = string.ascii_uppercase.replace('O', '').replace('I', '') + string.digits.replace('0', '').replace('1', '')
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+# ========== ПРОВЕРКА АДМИНА ПРИ ПОДПИСКЕ ==========
+
+async def check_subscription_with_admin(user_id: int) -> dict:
+    """Проверка подписки с учетом админских прав"""
+    # Админы имеют безлимитный доступ
+    if await db.is_admin(user_id):
+        return {"active": True, "type": "admin", "end_date": None}
+    
+    # Обычная проверка подписки
+    return await db.check_subscription(user_id)
+
 async def main():
     """Главная функция запуска бота"""
     logger.info("Инициализация базы данных...")
@@ -1221,6 +1827,12 @@ async def main():
     
     logger.info("Инициализация данных алфавита...")
     await db.init_alphabet_data()
+    
+    # Инициализация админов из конфига
+    if Config.ADMIN_IDS:
+        logger.info(f"Инициализация администраторов: {Config.ADMIN_IDS}")
+        for admin_id in Config.ADMIN_IDS:
+            await db.set_admin(admin_id, True)
     
     logger.info("Запуск бота...")
     await dp.start_polling(bot)
