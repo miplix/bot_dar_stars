@@ -239,11 +239,28 @@ class AIHandler:
         Returns:
             Полная трактовка от ИИ с кратким описанием и детальным анализом
         """
+        print("=" * 60)
+        print("🎭 КОМПЛЕКСНЫЙ АНАЛИЗ ПРОФИЛЯ")
+        print("=" * 60)
+        print(f"🔍 API ключ: {'✅ установлен' if self.api_key else '❌ НЕ установлен'}")
+        print(f"🔍 API URL: {self.api_url}")
+        
         if not self.api_key:
+            print("⚠️ API ключ не установлен, возвращаю базовую трактовку")
             return self._get_basic_complete_interpretation(profile_data)
         
+        # Проверяем полученные данные
+        print("\n📊 Полученные данные:")
+        print(f"   ОДА: {profile_data.get('oda', {}).get('gift_code', 'НЕТ')}")
+        print(f"   ТУНА: {profile_data.get('tuna', {}).get('gift_code', 'НЕТ')}")
+        print(f"   ТРИА: {profile_data.get('tria', {}).get('gift_code', 'НЕТ')}")
+        print(f"   ЧИА: {profile_data.get('chia', {}).get('gift_code', 'НЕТ')}")
+        
         # Формируем запрос к ИИ
+        print("\n📝 Формирую промпт для ИИ...")
         prompt = self._build_complete_prompt(profile_data)
+        print(f"✅ Промпт сформирован (длина: {len(prompt)} символов)")
+        print(f"📝 Первые 200 символов промпта:\n{prompt[:200]}...")
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -304,19 +321,30 @@ class AIHandler:
                     "max_tokens": 3000
                 }
                 
+                print(f"🌐 Отправляю запрос к API: {self.api_url}/chat/completions")
+                
                 async with session.post(
                     f"{self.api_url}/chat/completions",
                     headers=headers,
                     json=data
                 ) as response:
+                    print(f"📡 Получен ответ от API: status={response.status}")
+                    
                     if response.status == 200:
                         result = await response.json()
-                        return result['choices'][0]['message']['content']
+                        ai_response = result['choices'][0]['message']['content']
+                        print(f"✅ ИИ вернул ответ (длина: {len(ai_response)} символов)")
+                        return ai_response
                     else:
+                        error_text = await response.text()
+                        print(f"❌ Ошибка API: status={response.status}")
+                        print(f"📄 Тело ответа: {error_text[:500]}")
                         return self._get_basic_complete_interpretation(profile_data)
         
         except Exception as e:
-            print(f"Ошибка при обращении к ИИ: {e}")
+            print(f"❌ ИСКЛЮЧЕНИЕ при обращении к ИИ: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return self._get_basic_complete_interpretation(profile_data)
     
     def _build_complete_prompt(self, profile_data: dict) -> str:
