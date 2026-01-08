@@ -302,3 +302,4 @@ cp data/bot_database.db data/backup_$(date +%Y%m%d).db
 
 *Если возникнут вопросы - вся документация в файлах проекта*
 
+

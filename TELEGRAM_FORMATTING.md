@@ -236,3 +236,4 @@ await message.answer(interpretation, parse_mode="Markdown")
 **Статус:** ✅ Готово к использованию  
 **Бот:** `@test_bot_dlya_darov_bot`
 
+

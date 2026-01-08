@@ -4,7 +4,8 @@
 import os
 from dotenv import load_dotenv
 
-# Загрузка переменных окружения из .env файла
+# Загрузка переменных окружения из .env файла (только для локальной разработки)
+# На Railway переменные уже будут в окружении
 load_dotenv()
 
 class Config:
@@ -13,13 +14,29 @@ class Config:
     # Telegram Bot
     BOT_TOKEN = os.getenv('BOT_TOKEN')
     if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN не найден в .env файле!")
+        raise ValueError("BOT_TOKEN не найден в переменных окружения!")
     
-    # Админы (ID пользователей через запятую в .env)
-    ADMIN_IDS = [int(x.strip()) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]
+    # Админы (ID пользователей через запятую)
+    # ВАЖНО: На Railway нужно установить эту переменную в настройках проекта
+    admin_ids_str = os.getenv('ADMIN_IDS', '')
+    ADMIN_IDS = []
+    if admin_ids_str:
+        try:
+            ADMIN_IDS = [int(x.strip()) for x in admin_ids_str.split(',') if x.strip()]
+            print(f"✅ Загружены админы: {ADMIN_IDS}")
+        except ValueError as e:
+            print(f"⚠️ Ошибка при парсинге ADMIN_IDS: {e}")
+            ADMIN_IDS = []
+    else:
+        print("⚠️ ADMIN_IDS не установлен в переменных окружения!")
     
     # DeepSeek AI API
     DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
+    if not DEEPSEEK_API_KEY:
+        print("⚠️ DEEPSEEK_API_KEY не установлен! ИИ функции будут недоступны.")
+    else:
+        print("✅ DEEPSEEK_API_KEY загружен")
+    
     DEEPSEEK_API_URL = os.getenv('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1')
     
     # Database

@@ -1822,6 +1822,15 @@ async def check_subscription_with_admin(user_id: int) -> dict:
 
 async def main():
     """Главная функция запуска бота"""
+    logger.info("=" * 50)
+    logger.info("ЗАПУСК БОТА")
+    logger.info("=" * 50)
+    
+    # Проверка переменных окружения
+    logger.info(f"BOT_TOKEN: {'✅ Установлен' if Config.BOT_TOKEN else '❌ НЕ УСТАНОВЛЕН'}")
+    logger.info(f"DEEPSEEK_API_KEY: {'✅ Установлен' if Config.DEEPSEEK_API_KEY else '❌ НЕ УСТАНОВЛЕН'}")
+    logger.info(f"ADMIN_IDS: {Config.ADMIN_IDS if Config.ADMIN_IDS else '❌ НЕ УСТАНОВЛЕНЫ'}")
+    
     logger.info("Инициализация базы данных...")
     await db.init_db()
     
@@ -1833,8 +1842,13 @@ async def main():
         logger.info(f"Инициализация администраторов: {Config.ADMIN_IDS}")
         for admin_id in Config.ADMIN_IDS:
             await db.set_admin(admin_id, True)
+            logger.info(f"✅ Админ {admin_id} добавлен")
+    else:
+        logger.warning("⚠️ Администраторы не настроены! Добавьте ADMIN_IDS в переменные окружения.")
     
+    logger.info("=" * 50)
     logger.info("Запуск бота...")
+    logger.info("=" * 50)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
