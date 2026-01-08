@@ -18,17 +18,31 @@ class Config:
     
     # Админы (ID пользователей через запятую)
     # ВАЖНО: На Railway нужно установить эту переменную в настройках проекта
-    admin_ids_str = os.getenv('ADMIN_IDS', '')
+    # Формат: 123456789,987654321 (БЕЗ пробелов!)
+    admin_ids_str = os.getenv('ADMIN_IDS', '').strip()
     ADMIN_IDS = []
+    
+    print(f"🔍 DEBUG: ADMIN_IDS raw value: '{admin_ids_str}'")
+    print(f"🔍 DEBUG: ADMIN_IDS length: {len(admin_ids_str)}")
+    
     if admin_ids_str:
         try:
-            ADMIN_IDS = [int(x.strip()) for x in admin_ids_str.split(',') if x.strip()]
+            # Удаляем все пробелы и разбиваем по запятым
+            parts = [x.strip() for x in admin_ids_str.replace(' ', '').split(',') if x.strip()]
+            print(f"🔍 DEBUG: После разбиения: {parts}")
+            
+            ADMIN_IDS = [int(x) for x in parts if x]
             print(f"✅ Загружены админы: {ADMIN_IDS}")
+            
+            if not ADMIN_IDS:
+                print("⚠️ ADMIN_IDS задан, но пустой после парсинга!")
         except ValueError as e:
-            print(f"⚠️ Ошибка при парсинге ADMIN_IDS: {e}")
+            print(f"❌ Ошибка при парсинге ADMIN_IDS: {e}")
+            print(f"❌ Проблемное значение: '{admin_ids_str}'")
             ADMIN_IDS = []
     else:
         print("⚠️ ADMIN_IDS не установлен в переменных окружения!")
+        print("ℹ️  Установите ADMIN_IDS в формате: 123456789,987654321")
     
     # DeepSeek AI API
     DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')

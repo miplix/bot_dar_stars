@@ -132,13 +132,22 @@ class Database:
             await db.commit()
     
     async def add_user(self, user_id: int, username: str = None, first_name: str = None):
-        """Добавление нового пользователя"""
+        """Добавление нового пользователя (только если его еще нет)"""
         async with aiosqlite.connect(self.db_path) as db:
+            # Проверяем, есть ли уже пользователь
+            cursor = await db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+            existing_user = await cursor.fetchone()
+            
+            if existing_user:
+                # Пользователь уже существует - не обновляем триал период!
+                return
+            
+            # Новый пользователь - создаем с триал периодом
             registration_date = datetime.now().isoformat()
             trial_end = (datetime.now() + timedelta(days=Config.TRIAL_DURATION_DAYS)).isoformat()
             
             await db.execute("""
-                INSERT OR IGNORE INTO users 
+                INSERT INTO users 
                 (user_id, username, first_name, registration_date, subscription_type, subscription_end_date)
                 VALUES (?, ?, ?, ?, 'trial', ?)
             """, (user_id, username, first_name, registration_date, trial_end))
