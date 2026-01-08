@@ -239,11 +239,7 @@ class AIHandler:
         Returns:
             Полная трактовка от ИИ с кратким описанием и детальным анализом
         """
-        print(f"🔍 DEBUG: get_complete_profile_interpretation вызван")
-        print(f"🔍 DEBUG: API ключ присутствует: {bool(self.api_key)}")
-        
         if not self.api_key:
-            print("⚠️ API ключ отсутствует, используем базовую интерпретацию")
             return self._get_basic_complete_interpretation(profile_data)
         
         # Формируем запрос к ИИ
@@ -313,22 +309,14 @@ class AIHandler:
                     headers=headers,
                     json=data
                 ) as response:
-                    print(f"🔍 DEBUG: Ответ от API, статус: {response.status}")
-                    
                     if response.status == 200:
                         result = await response.json()
-                        ai_response = result['choices'][0]['message']['content']
-                        print(f"✅ Получен ответ от ИИ, длина: {len(ai_response)} символов")
-                        return ai_response
+                        return result['choices'][0]['message']['content']
                     else:
-                        error_text = await response.text()
-                        print(f"❌ Ошибка API {response.status}: {error_text[:200]}")
                         return self._get_basic_complete_interpretation(profile_data)
         
         except Exception as e:
-            print(f"❌ Исключение при обращении к ИИ: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Ошибка при обращении к ИИ: {e}")
             return self._get_basic_complete_interpretation(profile_data)
     
     def _build_complete_prompt(self, profile_data: dict) -> str:
