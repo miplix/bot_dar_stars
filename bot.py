@@ -563,29 +563,92 @@ async def process_last_name(message: Message, state: FSMContext):
         # Обновляем сообщение о процессе
         await processing_msg.edit_text(
             "🤖 Расчет завершен! Анализирую данные с помощью ИИ...\n\n"
-            "⏳ Пожалуйста, подождите..."
+            "⏳ Пожалуйста, подождите...\n"
+            "⏱ Это может занять 10-30 секунд"
         )
         
         # Получаем трактовку от ИИ
-        interpretation = await ai_handler.get_complete_profile_interpretation(results)
-        
-        # Удаляем сообщение о обработке
-        await processing_msg.delete()
-        
-        # Отправляем результат
-        await message.answer(
-            interpretation,
-            reply_markup=get_main_menu(),
-            parse_mode="Markdown"
-        )
-        
-        await state.clear()
+        try:
+            interpretation = await ai_handler.get_complete_profile_interpretation(results)
+            
+            # Проверяем, что получили реальный анализ, а не базовую трактовку
+            if not interpretation or len(interpretation.strip()) < 100:
+                logger.warning("Получен слишком короткий ответ от ИИ")
+                raise ValueError("Ответ от ИИ слишком короткий")
+            
+            # Проверяем, что это не базовая трактовка
+            if "━━━━━━━━━━━━━━━━━━" in interpretation and "Комплексный анализ даров" in interpretation:
+                logger.warning("Получена базовая трактовка вместо ИИ анализа")
+                raise ValueError("Получена базовая трактовка вместо ИИ анализа")
+            
+            # Удаляем сообщение о обработке
+            await processing_msg.delete()
+            
+            # Отправляем результат
+            # Разбиваем на части если текст слишком длинный (Telegram лимит 4096 символов)
+            max_length = 4000
+            if len(interpretation) > max_length:
+                parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
+                for i, part in enumerate(parts):
+                    if i == 0:
+                        await message.answer(part, parse_mode="Markdown")
+                    else:
+                        await message.answer(part, parse_mode="Markdown")
+            else:
+                await message.answer(
+                    interpretation,
+                    reply_markup=get_main_menu(),
+                    parse_mode="Markdown"
+                )
+            
+            await state.clear()
+            
+        except Exception as ai_error:
+            logger.error(f"Ошибка при анализе ИИ: {ai_error}", exc_info=True)
+            
+            # Удаляем сообщение о процессе
+            try:
+                await processing_msg.delete()
+            except:
+                pass
+            
+            # Показываем базовую трактовку с предупреждением
+            basic_interpretation = ai_handler._get_basic_complete_interpretation(results)
+            
+            error_notice = """⚠️ *Не удалось получить анализ от ИИ*
+
+Возвращаю базовые данные из базы знаний.
+
+*Причина ошибки:* {error}
+
+Попробуйте позже или обратитесь к администратору.
+
+━━━━━━━━━━━━━━━━━━
+
+""".format(error=str(ai_error)[:200])
+            
+            await message.answer(
+                error_notice + basic_interpretation,
+                reply_markup=get_main_menu(),
+                parse_mode="Markdown"
+            )
+            
+            await state.clear()
         
     except Exception as e:
-        logger.error(f"Ошибка при комплексном расчете: {e}")
+        logger.error(f"Ошибка при комплексном расчете: {e}", exc_info=True)
+        
+        # Удаляем сообщение о процессе если есть
+        try:
+            if 'processing_msg' in locals():
+                await processing_msg.delete()
+        except:
+            pass
+        
         await message.answer(
-            "❌ Произошла ошибка при расчете. Попробуйте еще раз позже.",
-            reply_markup=get_main_menu()
+            f"❌ Произошла ошибка при расчете:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
         )
         await state.clear()
 
