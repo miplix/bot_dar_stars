@@ -123,6 +123,24 @@ class Database:
                 )
             """)
             
+            # Таблица позиций Ма-Жи-Кун
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ma_zhi_kun_positions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    description TEXT NOT NULL
+                )
+            """)
+            
+            # Таблица полей (1-9)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS gift_fields (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL
+                )
+            """)
+            
             # Миграция: добавление колонки is_admin, если её нет
             cursor = await db.execute("PRAGMA table_info(users)")
             columns = [row[1] for row in await cursor.fetchall()]
@@ -312,7 +330,7 @@ class Database:
             ("Щ", "", ""),
             ("Ы", "", ""),
             ("Э", "", ""),
-            ("Ю", "ЙУ", "состоит из Й + У. Если И оплодотворить райдой + точка входа"),
+            ("Ю", "Юдл", "состоит из Й + У. Если И оплодотворить райдой + точка входа"),
             ("Я", "ЙА", "состоит из Й + А. Если И оплодотворить райдой + Оду (точка судьбы, выбор)")
         ]
         
@@ -474,4 +492,80 @@ class Database:
                 'promocode': promo,
                 'usage_list': usage_list
             }
+    
+    # ========== АЛХИМИЯ ДАРОВ (МА-ЖИ-КУН ПОЗИЦИИ И ПОЛЯ) ==========
+    
+    async def init_ma_zhi_kun_data(self):
+        """Инициализация данных позиций Ма-Жи-Кун"""
+        positions_data = [
+            ("МА", "Мир непроявленного потенциала. Содержит идеи, желания, воспоминания — всё вне текущего фокуса внимания. Находится сзади/внутри. Соответствует будущему. Энергия: внутренний потенциал."),
+            ("ЖИ", "Мир проявленной реальности. Всё, что наблюдаем и ощущаем прямо сейчас: предметы, мысли, эмоции. Находится впереди/снаружи. Соответствует прошлому. Энергия: внешняя материальность."),
+            ("КУН", "Процесс творения и перехода между МА и ЖИ. Активный акт созидания в точке «здесь и сейчас». Осознанные действия и наблюдение. Находится посередине. Энергия: подвижная, творящая реальность.")
+        ]
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            for name, description in positions_data:
+                await db.execute("""
+                    INSERT OR REPLACE INTO ma_zhi_kun_positions (name, description)
+                    VALUES (?, ?)
+                """, (name, description))
+            await db.commit()
+    
+    async def init_gift_fields_data(self):
+        """Инициализация данных полей (1-9)"""
+        fields_data = [
+            (1, "Логос", "Структура, архитектура пространства. Форма - треугольник. В теле: копчик. Вкус: соленый. Ощущение: сухой, сохраниние, поглощающий. Цвет: красный. Стихия: внутренняя Земля, сохраниение."),
+            (2, "Нима", "Пространство, бесконечность. В теле: таз, низ живота. Форма - пространство. Ощущение: мягкое, расширяющее. Цвет: голубой. Стихия: внутренний Воздух. Вкус: кислый."),
+            (3, "Андра", "Соединение и разьединение. В теле: живот, поясница. Ощущение: Острое, треск/надлом. Цвет: зелёный. Форма: ветвистость. Стихия: внутренняя Вода. Вкус: острый."),
+            (4, "Зингра", "Процесс горения и трансформации. Законы: необратимое изменение, испытание. В теле: солнечное сплетение. Ощущение: текстурное, стремлнение, изменяющий. Вкус: горький. Цвет: желтый. Стихия: внутренний Огонь. Драйв, смелость, сила прорыва, трансформация. Форма: спираль."),
+            (5, "Луба", "Солнце, центр. Форма - точка. В теле: сердечный центр. Ощущение: наполняющее, творение. Цвет: белый. Стихия: Внешний Огонь. Вкус: широкий. Дар: единство, стремление к точке, энергия, воля. "),
+            (6, "Тума", "Постоянное движение, синхронистичность, цикличность. В теле: грудная клетка. Ощущение: гладкое, притяжение, динамичный. Цвет: Синий, фиолетовый. Стихия: внешняя Вода (поток). Дар: Время, движение. Вкус: сладкий. Форма: волна."),
+            (7, "Астра", "Канал между мирами. Путь, канал. В теле: горло. Ощущение: влажное, связующий, пряный. Цвет: фиолетовый. Стихия: Внешний воздух. Связи, коммуникация, каналы между обьектами. Форма: линия."),
+            (8, "Битра", "Граница, форма, оболочка. В теле: лоб, третий глаз. Ощущение: твердое, обрамляющий, терпкий. Цвет: оранжевый. Стихия: внешняя Земля. Форма: круг."),
+            (9, "Ома", "Пробуждение центральной силы (Кундалини). Всё есть Одно, прямое переживание, трансценденция. В теле: позвоночник. Ощущение: восходящий поток, экстатическая полнота. Цвет: радужный. Стихия: Эфир. Целостность, просветление, активация. Форма - любая, так как содержит в себе все.")
+        ]
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            for field_id, name, description in fields_data:
+                await db.execute("""
+                    INSERT OR REPLACE INTO gift_fields (id, name, description)
+                    VALUES (?, ?, ?)
+                """, (field_id, name, description))
+            await db.commit()
+    
+    async def get_ma_zhi_kun_position(self, name: str):
+        """Получение информации о позиции Ма-Жи-Кун"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM ma_zhi_kun_positions WHERE name = ?", (name,)
+            )
+            return await cursor.fetchone()
+    
+    async def get_gift_field(self, field_id: int):
+        """Получение информации о поле по ID"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM gift_fields WHERE id = ?", (field_id,)
+            )
+            return await cursor.fetchone()
+    
+    async def get_all_ma_zhi_kun_positions(self):
+        """Получение всех позиций Ма-Жи-Кун"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM ma_zhi_kun_positions ORDER BY name"
+            )
+            return await cursor.fetchall()
+    
+    async def get_all_gift_fields(self):
+        """Получение всех полей"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM gift_fields ORDER BY id"
+            )
+            return await cursor.fetchall()
 

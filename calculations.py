@@ -352,7 +352,19 @@ class GiftsCalculator:
                                    latitude: float, longitude: float,
                                    first_name: str, last_name: str) -> Dict:
         """
-        Комплексный расчет всех четырех компонентов
+        Комплексный расчет всех четырех компонентов профиля
+        
+        Процесс:
+        1. Запрашиваются данные по очереди у пользователя (в bot.py)
+        2. После сбора всех данных - все считается
+        3. Данные пропускаются через базу данных для получения информации о дарах
+        4. Затем анализируются через ИИ с учетом данных из базы
+        
+        Уровни влияния:
+        - Ода (основные данные) - главное влияние (100%)
+        - Туна (второстепенные данные) - меньшее влияние (70%)
+        - Триа (третьестепенные данные) - еще меньшее влияние (40%)
+        - Чиа (четверостепенные данные) - самое малое влияние (20%)
         
         Args:
             birth_date: Дата рождения (ДД.ММ.ГГГГ)
@@ -363,40 +375,70 @@ class GiftsCalculator:
             last_name: Фамилия
         
         Returns:
-            Словарь со всеми расчетами
+            Словарь со всеми расчетами и информацией из базы данных
         """
         try:
-            # Рассчитываем Ода
+            # Рассчитываем Ода (основные данные - главное влияние)
             oda = self.calculate_oda(birth_date)
             if oda['status'] == 'error':
                 return oda
             
-            # Рассчитываем Туна (используем Кун из Ода)
+            # Рассчитываем Туна (второстепенные данные - меньшее влияние)
+            # Ма = Кун из Ода
             tuna = self.calculate_tuna(birth_time, oda['kun'])
             if tuna['status'] == 'error':
                 return tuna
             
-            # Рассчитываем Триа
+            # Рассчитываем Триа (третьестепенные данные - еще меньшее влияние)
             tria = self.calculate_tria(latitude, longitude)
             if tria['status'] == 'error':
                 return tria
             
-            # Рассчитываем Чиа
+            # Рассчитываем Чиа (четверостепенные данные - самое малое влияние)
             chia = self.calculate_chia(first_name, last_name)
             if chia['status'] == 'error':
                 return chia
             
-            return {
+            # Пропускаем через базу данных - получаем информацию о дарах
+            from gifts_knowledge import get_gift_info
+            
+            # Получаем информацию о каждом даре из базы
+            oda_gift_info = get_gift_info(oda.get('gift_code', ''))
+            tuna_gift_info = get_gift_info(tuna.get('gift_code', ''))
+            tria_gift_info = get_gift_info(tria.get('gift_code', ''))
+            chia_gift_info = get_gift_info(chia.get('gift_code', ''))
+            
+            # Формируем полный результат с данными из базы
+            result = {
                 "status": "success",
-                "oda": oda,
-                "tuna": tuna,
-                "tria": tria,
-                "chia": chia,
+                "oda": {
+                    **oda,
+                    "gift_info": oda_gift_info,
+                    "influence_level": 100  # Главное влияние
+                },
+                "tuna": {
+                    **tuna,
+                    "gift_info": tuna_gift_info,
+                    "influence_level": 70  # Меньшее влияние
+                },
+                "tria": {
+                    **tria,
+                    "gift_info": tria_gift_info,
+                    "influence_level": 40  # Еще меньшее влияние
+                },
+                "chia": {
+                    **chia,
+                    "gift_info": chia_gift_info,
+                    "influence_level": 20  # Самое малое влияние
+                },
                 "birth_date": birth_date,
                 "birth_time": birth_time,
                 "location": {"latitude": latitude, "longitude": longitude},
                 "name": {"first": first_name.capitalize(), "last": last_name.capitalize()}
             }
+            
+            return result
+            
         except Exception as e:
             return {
                 "status": "error",

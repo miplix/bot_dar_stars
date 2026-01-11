@@ -9,6 +9,7 @@ def get_main_menu() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text="🎁 Рассчитать дары")],
         [KeyboardButton(text="🎭 Полный профиль")],
+        [KeyboardButton(text="⚗️ Алхимия даров")],
         [KeyboardButton(text="📿 Сантры")],
         [KeyboardButton(text="🔮 Анализ слов")],
         [KeyboardButton(text="💎 Подписка"), KeyboardButton(text="❓ Помощь")]

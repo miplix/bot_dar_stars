@@ -7,6 +7,7 @@ import json
 import secrets
 import string
 import random
+import re
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery, InlineKeyboardButton, InlineKeyboardMarkup
@@ -62,6 +63,9 @@ class UserStates(StatesGroup):
     waiting_for_promo_type = State()
     waiting_for_promo_value = State()
     waiting_for_promo_max_uses = State()
+    
+    # Состояния для алхимии даров
+    waiting_for_alchemy_numbers = State()
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -429,10 +433,13 @@ async def process_location_geo(message: Message, state: FSMContext):
     # Сохраняем координаты в состояние
     await state.update_data(latitude=latitude, longitude=longitude)
     
+    # Убираем клавиатуру с кнопками геолокации
+    from aiogram.types import ReplyKeyboardRemove
+    
     await message.answer(
         f"✅ Геолокация получена: `{latitude:.4f}, {longitude:.4f}`\n\n"
         "👤 Теперь введите ваше *имя*:",
-        reply_markup=None,
+        reply_markup=ReplyKeyboardRemove(),
         parse_mode="Markdown"
     )
     await state.set_state(UserStates.waiting_for_first_name)
@@ -467,10 +474,13 @@ async def process_location_text(message: Message, state: FSMContext):
         # Сохраняем координаты в состояние
         await state.update_data(latitude=latitude, longitude=longitude)
         
+        # Убираем клавиатуру с кнопками геолокации
+        from aiogram.types import ReplyKeyboardRemove
+        
         await message.answer(
             f"✅ Координаты получены: `{latitude:.4f}, {longitude:.4f}`\n\n"
             "👤 Теперь введите ваше *имя*:",
-            reply_markup=None,
+            reply_markup=ReplyKeyboardRemove(),
             parse_mode="Markdown"
         )
         await state.set_state(UserStates.waiting_for_first_name)
@@ -969,9 +979,23 @@ async def back_to_mantras(callback: CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(F.data == "back_to_main")
-async def back_to_main(callback: CallbackQuery):
+async def back_to_main(callback: CallbackQuery, state: FSMContext):
     """Возврат в главное меню"""
+    await state.clear()
     await callback.message.delete()
+    await callback.answer()
+
+@dp.callback_query(F.data == "back_to_main_alchemy")
+async def back_to_main_alchemy(callback: CallbackQuery, state: FSMContext):
+    """Возврат в главное меню из алхимии"""
+    await state.clear()
+    await callback.message.delete()
+    welcome_text = """👋 *Добро пожаловать!*
+
+🎁 Я помогу вам раскрыть ваши дары, заложенные при рождении по древнеславянской системе *Ма-Жи-Кун*.
+
+📝 Используйте меню ниже для начала работы:"""
+    await callback.message.answer(welcome_text, reply_markup=get_main_menu(), parse_mode="Markdown")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("mantra_create_"))
@@ -1418,6 +1442,231 @@ async def button_alphabet(message: Message):
 Выберите действие ниже:"""
     
     await message.answer(text, reply_markup=get_alphabet_menu(), parse_mode="Markdown")
+
+@dp.message(F.text == "⚗️ Алхимия даров")
+async def button_alchemy(message: Message, state: FSMContext):
+    """Кнопка алхимии даров"""
+    text = """⚗️ *Алхимия даров*
+
+Расчет по системе Ма-Жи-Кун с использованием полей от 1 до 9.
+
+*Как это работает:*
+Введите три цифры, соответствующие позициям:
+• *МА* (потенциал) - первая цифра
+• *ЖИ* (проявленность) - вторая цифра  
+• *КУН* (творение) - третья цифра
+
+*Формат ввода:*
+• `111` или `1-1-1` или любым другим способом
+• ⚠️ Если вы введете больше цифр - будут восприняты только первые 3
+
+*Примеры:*
+• `123` - МА=1, ЖИ=2, КУН=3
+• `5-7-9` - МА=5, ЖИ=7, КУН=9
+
+Введите три цифры:"""
+    
+    await message.answer(text, parse_mode="Markdown")
+    await state.set_state(UserStates.waiting_for_alchemy_numbers)
+
+@dp.message(UserStates.waiting_for_alchemy_numbers)
+async def process_alchemy_numbers(message: Message, state: FSMContext):
+    """Обработка введенных цифр для алхимии"""
+    user_id = message.from_user.id
+    input_text = message.text.strip()
+    
+    # Проверяем подписку
+    subscription = await check_subscription_with_admin(user_id)
+    if not subscription['active']:
+        text = """⚠️ *Подписка не активна*
+
+Для алхимии даров необходима активная подписка.
+
+⭐️ *Премиум подписка:*
+📅 Месяц - {month_price} ⭐️
+📆 Год - {year_price} ⭐️
+
+🎁 Что вы получите:
+• Безлимитные расчеты даров
+• Алхимия даров с ИИ
+• Полный анализ
+• Персональные рекомендации
+
+_Нажмите кнопку ниже для оформления подписки_""".format(
+            month_price=Config.PREMIUM_MONTH_PRICE,
+            year_price=Config.PREMIUM_YEAR_PRICE
+        )
+        await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        await state.clear()
+        return
+    
+    # Извлекаем все цифры из введенного текста
+    digits = re.findall(r'\d', input_text)
+    
+    # Проверяем количество цифр
+    if len(digits) < 3:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="« Назад в главное меню", callback_data="back_to_main_alchemy")]
+        ])
+        await message.answer(
+            "❌ *Недостаточно цифр*\n\n"
+            "Пожалуйста, введите 3 цифры для позиций МА-ЖИ-КУН.\n\n"
+            "Например: `111` или `1-2-3`",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Берем первые 3 цифры
+    ma_num = int(digits[0])
+    zhi_num = int(digits[1])
+    kun_num = int(digits[2])
+    
+    # Проверяем диапазон (должны быть от 1 до 9)
+    if not (1 <= ma_num <= 9) or not (1 <= zhi_num <= 9) or not (1 <= kun_num <= 9):
+        await message.answer(
+            "❌ *Неверный диапазон*\n\n"
+            "Цифры должны быть от 1 до 9 включительно.\n\n"
+            "Попробуйте еще раз.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # ОБЯЗАТЕЛЬНО отправляем временное сообщение об обработке СРАЗУ после получения валидных цифр
+    processing_msg = await message.answer(
+        "⚗️ Ваши данные обрабатываются с помощью ИИ...\n⏳ Пожалуйста, подождите...",
+        parse_mode="Markdown"
+    )
+    
+    # Если было больше 3 цифр, предупреждаем (после сообщения об обработке)
+    warning_msg = None
+    if len(digits) > 3:
+        warning_msg = await message.answer(
+            f"⚠️ Введено {len(digits)} цифр. Будут использованы только первые 3: {ma_num}-{zhi_num}-{kun_num}",
+            parse_mode="Markdown"
+        )
+    
+    # Получаем данные из базы
+    ma_position = await db.get_ma_zhi_kun_position("МА")
+    zhi_position = await db.get_ma_zhi_kun_position("ЖИ")
+    kun_position = await db.get_ma_zhi_kun_position("КУН")
+    
+    ma_field = await db.get_gift_field(ma_num)
+    zhi_field = await db.get_gift_field(zhi_num)
+    kun_field = await db.get_gift_field(kun_num)
+    
+    if not ma_position or not zhi_position or not kun_position:
+        # Удаляем сообщение о обработке при ошибке
+        try:
+            await processing_msg.delete()
+        except:
+            pass
+        await message.answer(
+            "❌ Ошибка: не найдены позиции Ма-Жи-Кун в базе данных.\n"
+            "Обратитесь к администратору.",
+            reply_markup=get_main_menu()
+        )
+        await state.clear()
+        return
+    
+    if not ma_field or not zhi_field or not kun_field:
+        # Удаляем сообщение о обработке при ошибке
+        try:
+            await processing_msg.delete()
+        except:
+            pass
+        await message.answer(
+            f"❌ Ошибка: не найдены поля в базе данных.\n"
+            f"Проверьте, что поля {ma_num}, {zhi_num}, {kun_num} существуют.\n"
+            "Обратитесь к администратору.",
+            reply_markup=get_main_menu()
+        )
+        await state.clear()
+        return
+    
+    # Обновляем сообщение о начале анализа (меняем текст на более конкретный перед отправкой к ИИ)
+    try:
+        await processing_msg.edit_text(
+            "⚗️ Анализирую алхимию даров с помощью ИИ...\n⏳ Пожалуйста, подождите...",
+            parse_mode="Markdown"
+        )
+    except:
+        # Если не удалось отредактировать, оставляем как есть
+        pass
+    
+    try:
+        # Формируем данные для ИИ
+        alchemy_data = {
+            'ma': {
+                'position': {
+                    'name': ma_position['name'],
+                    'description': ma_position['description']
+                },
+                'field': {
+                    'id': ma_field['id'],
+                    'name': ma_field['name'],
+                    'description': ma_field['description']
+                }
+            },
+            'zhi': {
+                'position': {
+                    'name': zhi_position['name'],
+                    'description': zhi_position['description']
+                },
+                'field': {
+                    'id': zhi_field['id'],
+                    'name': zhi_field['name'],
+                    'description': zhi_field['description']
+                }
+            },
+            'kun': {
+                'position': {
+                    'name': kun_position['name'],
+                    'description': kun_position['description']
+                },
+                'field': {
+                    'id': kun_field['id'],
+                    'name': kun_field['name'],
+                    'description': kun_field['description']
+                }
+            }
+        }
+        
+        # Получаем анализ от ИИ
+        interpretation = await ai_handler.get_alchemy_interpretation(alchemy_data)
+        
+        # Удаляем сообщение о обработке
+        await processing_msg.delete()
+        
+        # Отправляем результат
+        max_length = 4000
+        if len(interpretation) > max_length:
+            parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
+            for i, part in enumerate(parts):
+                if i == 0:
+                    await message.answer(part, parse_mode="Markdown")
+                else:
+                    await message.answer(part, parse_mode="Markdown")
+        else:
+            await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+        
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Ошибка при анализе алхимии: {e}", exc_info=True)
+        
+        try:
+            await processing_msg.delete()
+        except:
+            pass
+        
+        await message.answer(
+            f"❌ Произошла ошибка при анализе:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
+        )
+        await state.clear()
 
 @dp.callback_query(F.data == "alphabet_analyze")
 async def handle_alphabet_analyze_start(callback: CallbackQuery, state: FSMContext):
@@ -1899,6 +2148,12 @@ async def main():
     
     logger.info("Инициализация данных алфавита...")
     await db.init_alphabet_data()
+    
+    logger.info("Инициализация данных позиций Ма-Жи-Кун...")
+    await db.init_ma_zhi_kun_data()
+    
+    logger.info("Инициализация данных полей (1-9)...")
+    await db.init_gift_fields_data()
     
     # Инициализация админов из конфига
     if Config.ADMIN_IDS:
