@@ -12,7 +12,7 @@ def get_main_menu() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="⚗️ Алхимия даров")],
         [KeyboardButton(text="📿 Сантры")],
         [KeyboardButton(text="🔮 Анализ слов")],
-        [KeyboardButton(text="🌟 Дар дня")],
+        [KeyboardButton(text="🌟 Дар дня"), KeyboardButton(text="🔮 Предсказания")],
         [KeyboardButton(text="💎 Подписка"), KeyboardButton(text="❓ Помощь")]
     ]
     return ReplyKeyboardMarkup(
@@ -93,6 +93,16 @@ def get_admin_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="➕ Создать промокод", callback_data="admin_create_promo")],
         [InlineKeyboardButton(text="📋 Список промокодов", callback_data="admin_list_promos")],
         [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_predictions_menu() -> InlineKeyboardMarkup:
+    """Меню выбора типа предсказания"""
+    keyboard = [
+        [InlineKeyboardButton(text="📅 На день", callback_data="prediction_day")],
+        [InlineKeyboardButton(text="🎯 На событие", callback_data="prediction_event")],
+        [InlineKeyboardButton(text="💑 Совместимость пары", callback_data="prediction_compatibility")],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

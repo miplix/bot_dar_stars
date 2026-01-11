@@ -19,7 +19,7 @@ from config import Config
 from database import Database
 from calculations import GiftsCalculator
 from ai_handler import AIHandler
-from keyboards import get_main_menu, get_subscription_menu, get_premium_options_menu, get_mantras_menu, get_mantra_create_options_menu, get_alphabet_menu, get_admin_menu
+from keyboards import get_main_menu, get_subscription_menu, get_premium_options_menu, get_mantras_menu, get_mantra_create_options_menu, get_alphabet_menu, get_admin_menu, get_predictions_menu
 from mantras import create_mantra_random, create_mantra_by_request, parse_mantra
 from alphabet_knowledge import AlphabetAnalyzer, check_if_gift_or_command
 
@@ -66,6 +66,11 @@ class UserStates(StatesGroup):
     
     # Состояния для алхимии даров
     waiting_for_alchemy_numbers = State()
+    
+    # Состояния для предсказаний
+    waiting_for_prediction_birth_date = State()  # Дата рождения для предсказания
+    waiting_for_prediction_event = State()  # Описание события
+    waiting_for_prediction_partner_birth_date = State()  # Дата рождения партнера
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -1515,6 +1520,364 @@ _Нажмите кнопку ниже для оформления подписк
             reply_markup=get_main_menu(),
             parse_mode="Markdown"
         )
+
+@dp.message(F.text == "🔮 Предсказания")
+async def button_predictions(message: Message):
+    """Кнопка предсказаний"""
+    user_id = message.from_user.id
+    
+    # Проверяем подписку
+    subscription = await check_subscription_with_admin(user_id)
+    if not subscription['active']:
+        text = """⚠️ *Подписка не активна*
+
+Для предсказаний необходима активная подписка.
+
+⭐️ *Премиум подписка:*
+📅 Месяц - {month_price} ⭐️
+📆 Год - {year_price} ⭐️
+
+🎁 Что вы получите:
+• Безлимитные расчеты даров
+• Предсказания на день, событие и совместимость
+• Полный анализ с ИИ
+• Персональные рекомендации
+
+_Нажмите кнопку ниже для оформления подписки_""".format(
+            month_price=Config.PREMIUM_MONTH_PRICE,
+            year_price=Config.PREMIUM_YEAR_PRICE
+        )
+        await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        return
+    
+    text = """🔮 *Предсказания*
+
+Выберите тип предсказания:
+
+*📅 На день* - предсказание на сегодня
+Расчет по текущей дате и вашей дате рождения
+
+*🎯 На событие* - предсказание на конкретное событие
+Случайные энергии для анализа события
+
+*💑 Совместимость пары* - анализ совместимости двух людей
+Сравнение даров для понимания взаимодействия
+
+Выберите тип:"""
+    
+    await message.answer(text, reply_markup=get_predictions_menu(), parse_mode="Markdown")
+
+@dp.callback_query(F.data == "prediction_day")
+async def handle_prediction_day(callback: CallbackQuery, state: FSMContext):
+    """Обработка предсказания на день"""
+    user_id = callback.from_user.id
+    
+    # Проверяем подписку
+    subscription = await check_subscription_with_admin(user_id)
+    if not subscription['active']:
+        await callback.answer("⚠️ Необходима активная подписка", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "📅 *Предсказание на день*\n\n"
+        "Введите вашу дату рождения в формате ДД.ММ.ГГГГ\n\n"
+        "Например: 15.05.1990",
+        parse_mode="Markdown"
+    )
+    await state.update_data(prediction_type="day")
+    await state.set_state(UserStates.waiting_for_prediction_birth_date)
+    await callback.answer()
+
+@dp.callback_query(F.data == "prediction_event")
+async def handle_prediction_event(callback: CallbackQuery, state: FSMContext):
+    """Обработка предсказания на событие"""
+    user_id = callback.from_user.id
+    
+    # Проверяем подписку
+    subscription = await check_subscription_with_admin(user_id)
+    if not subscription['active']:
+        await callback.answer("⚠️ Необходима активная подписка", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "🎯 *Предсказание на событие*\n\n"
+        "Введите вашу дату рождения в формате ДД.ММ.ГГГГ\n\n"
+        "Например: 15.05.1990",
+        parse_mode="Markdown"
+    )
+    await state.update_data(prediction_type="event")
+    await state.set_state(UserStates.waiting_for_prediction_birth_date)
+    await callback.answer()
+
+@dp.callback_query(F.data == "prediction_compatibility")
+async def handle_prediction_compatibility(callback: CallbackQuery, state: FSMContext):
+    """Обработка совместимости пары"""
+    user_id = callback.from_user.id
+    
+    # Проверяем подписку
+    subscription = await check_subscription_with_admin(user_id)
+    if not subscription['active']:
+        await callback.answer("⚠️ Необходима активная подписка", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "💑 *Совместимость пары*\n\n"
+        "Введите вашу дату рождения в формате ДД.ММ.ГГГГ\n\n"
+        "Например: 15.05.1990",
+        parse_mode="Markdown"
+    )
+    await state.update_data(prediction_type="compatibility")
+    await state.set_state(UserStates.waiting_for_prediction_birth_date)
+    await callback.answer()
+
+@dp.message(UserStates.waiting_for_prediction_birth_date)
+async def process_prediction_birth_date(message: Message, state: FSMContext):
+    """Обработка даты рождения для предсказания"""
+    birth_date = message.text.strip()
+    user_id = message.from_user.id
+    data = await state.get_data()
+    prediction_type = data.get('prediction_type')
+    
+    # Проверяем формат даты
+    try:
+        day, month, year = calculator.parse_date(birth_date)
+        await state.update_data(user_birth_date=birth_date)
+        
+        if prediction_type == "compatibility":
+            # Для совместимости запрашиваем дату партнера
+            await message.answer(
+                "👤 Теперь введите дату рождения партнера в формате ДД.ММ.ГГГГ\n\n"
+                "Например: 20.08.1992",
+                parse_mode="Markdown"
+            )
+            await state.set_state(UserStates.waiting_for_prediction_partner_birth_date)
+        elif prediction_type == "event":
+            # Для события запрашиваем описание события
+            await message.answer(
+                "🎯 На какое событие вы хотите получить предсказание?\n\n"
+                "Например: свадьба, переезд, новая работа, экзамен",
+                parse_mode="Markdown"
+            )
+            await state.set_state(UserStates.waiting_for_prediction_event)
+        else:
+            # Для дня - сразу обрабатываем
+            await process_prediction_day_calculation(message, state, birth_date)
+            
+    except ValueError as e:
+        await message.answer(
+            f"❌ {str(e)}\n\nПопробуйте еще раз в формате ДД.ММ.ГГГГ",
+            parse_mode="Markdown"
+        )
+
+@dp.message(UserStates.waiting_for_prediction_event)
+async def process_prediction_event_text(message: Message, state: FSMContext):
+    """Обработка описания события"""
+    event_text = message.text.strip()
+    data = await state.get_data()
+    user_birth_date = data.get('user_birth_date')
+    
+    if not event_text:
+        await message.answer("❌ Описание события не может быть пустым. Попробуйте еще раз:")
+        return
+    
+    await state.update_data(event_text=event_text)
+    
+    # Обрабатываем предсказание на событие
+    processing_msg = await message.answer(
+        "🔮 Генерирую предсказание на событие...\n⏳ Пожалуйста, подождите...",
+        parse_mode="Markdown"
+    )
+    
+    try:
+        # Генерируем случайные ма и жи (от 1 до 8)
+        ma_random = random.randint(1, 8)
+        ji_random = random.randint(1, 8)
+        kun_random = calculator.calculate_kun(ma_random, ji_random)
+        
+        # Рассчитываем Ода для пользователя
+        user_oda = calculator.calculate_oda(user_birth_date)
+        
+        # Получаем информацию о дарах из базы
+        from gifts_knowledge import get_gift_info
+        random_gift_code = f"{ma_random}-{ji_random}-{kun_random}"
+        random_gift_info = get_gift_info(random_gift_code)
+        user_gift_info = get_gift_info(user_oda['gift_code'])
+        
+        # Формируем данные для ИИ
+        prediction_data = {
+            'prediction_type': 'event',
+            'event': event_text,
+            'user_birth_date': user_birth_date,
+            'user_oda': user_oda,
+            'user_gift_info': user_gift_info,
+            'random_ma': ma_random,
+            'random_ji': ji_random,
+            'random_kun': kun_random,
+            'random_gift_code': random_gift_code,
+            'random_gift_info': random_gift_info
+        }
+        
+        # Получаем предсказание от ИИ
+        interpretation = await ai_handler.get_prediction(prediction_data)
+        
+        await processing_msg.delete()
+        
+        # Отправляем результат
+        max_length = 4000
+        if len(interpretation) > max_length:
+            parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
+            for part in parts:
+                await message.answer(part, parse_mode="Markdown")
+        else:
+            await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+        
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Ошибка при предсказании на событие: {e}", exc_info=True)
+        try:
+            await processing_msg.delete()
+        except:
+            pass
+        await message.answer(
+            f"❌ Произошла ошибка:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
+        )
+        await state.clear()
+
+@dp.message(UserStates.waiting_for_prediction_partner_birth_date)
+async def process_prediction_partner_birth_date(message: Message, state: FSMContext):
+    """Обработка даты рождения партнера"""
+    partner_birth_date = message.text.strip()
+    data = await state.get_data()
+    user_birth_date = data.get('user_birth_date')
+    
+    # Проверяем формат даты
+    try:
+        day, month, year = calculator.parse_date(partner_birth_date)
+        
+        # Обрабатываем совместимость
+        processing_msg = await message.answer(
+            "💑 Анализирую совместимость пары...\n⏳ Пожалуйста, подождите...",
+            parse_mode="Markdown"
+        )
+        
+        try:
+            # Рассчитываем Ода для обоих
+            user_oda = calculator.calculate_oda(user_birth_date)
+            partner_oda = calculator.calculate_oda(partner_birth_date)
+            
+            # Получаем информацию о дарах из базы
+            from gifts_knowledge import get_gift_info
+            user_gift_info = get_gift_info(user_oda['gift_code'])
+            partner_gift_info = get_gift_info(partner_oda['gift_code'])
+            
+            # Формируем данные для ИИ
+            prediction_data = {
+                'prediction_type': 'compatibility',
+                'user_birth_date': user_birth_date,
+                'partner_birth_date': partner_birth_date,
+                'user_oda': user_oda,
+                'partner_oda': partner_oda,
+                'user_gift_info': user_gift_info,
+                'partner_gift_info': partner_gift_info
+            }
+            
+            # Получаем предсказание от ИИ
+            interpretation = await ai_handler.get_prediction(prediction_data)
+            
+            await processing_msg.delete()
+            
+            # Отправляем результат
+            max_length = 4000
+            if len(interpretation) > max_length:
+                parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
+                for part in parts:
+                    await message.answer(part, parse_mode="Markdown")
+            else:
+                await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+            
+            await state.clear()
+            
+        except Exception as e:
+            logger.error(f"Ошибка при анализе совместимости: {e}", exc_info=True)
+            try:
+                await processing_msg.delete()
+            except:
+                pass
+            await message.answer(
+                f"❌ Произошла ошибка:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
+                reply_markup=get_main_menu(),
+                parse_mode="Markdown"
+            )
+            await state.clear()
+            
+    except ValueError as e:
+        await message.answer(
+            f"❌ {str(e)}\n\nПопробуйте еще раз в формате ДД.ММ.ГГГГ",
+            parse_mode="Markdown"
+        )
+
+async def process_prediction_day_calculation(message: Message, state: FSMContext, birth_date: str):
+    """Обработка предсказания на день"""
+    user_id = message.from_user.id
+    
+    processing_msg = await message.answer(
+        "📅 Рассчитываю предсказание на день...\n⏳ Пожалуйста, подождите...",
+        parse_mode="Markdown"
+    )
+    
+    try:
+        # Рассчитываем Ода для пользователя
+        user_oda = calculator.calculate_oda(birth_date)
+        
+        # Рассчитываем дар дня (по текущей дате)
+        day_gift_data = calculator.calculate_day_gift()
+        
+        # Получаем информацию о дарах из базы
+        from gifts_knowledge import get_gift_info
+        user_gift_info = get_gift_info(user_oda['gift_code'])
+        day_gift_info = get_gift_info(day_gift_data['gift_code'])
+        
+        # Формируем данные для ИИ
+        prediction_data = {
+            'prediction_type': 'day',
+            'user_birth_date': birth_date,
+            'user_oda': user_oda,
+            'user_gift_info': user_gift_info,
+            'day_gift': day_gift_data,
+            'day_gift_info': day_gift_info
+        }
+        
+        # Получаем предсказание от ИИ
+        interpretation = await ai_handler.get_prediction(prediction_data)
+        
+        await processing_msg.delete()
+        
+        # Отправляем результат
+        max_length = 4000
+        if len(interpretation) > max_length:
+            parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
+            for part in parts:
+                await message.answer(part, parse_mode="Markdown")
+        else:
+            await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+        
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Ошибка при предсказании на день: {e}", exc_info=True)
+        try:
+            await processing_msg.delete()
+        except:
+            pass
+        await message.answer(
+            f"❌ Произошла ошибка:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
+        )
+        await state.clear()
 
 @dp.message(F.text == "⚗️ Алхимия даров")
 async def button_alchemy(message: Message, state: FSMContext):
