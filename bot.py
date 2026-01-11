@@ -1443,6 +1443,79 @@ async def button_alphabet(message: Message):
     
     await message.answer(text, reply_markup=get_alphabet_menu(), parse_mode="Markdown")
 
+@dp.message(F.text == "🌟 Дар дня")
+async def button_day_gift(message: Message):
+    """Кнопка дара дня"""
+    user_id = message.from_user.id
+    
+    # Проверяем подписку
+    subscription = await check_subscription_with_admin(user_id)
+    if not subscription['active']:
+        text = """⚠️ *Подписка не активна*
+
+Для получения дара дня необходима активная подписка.
+
+⭐️ *Премиум подписка:*
+📅 Месяц - {month_price} ⭐️
+📆 Год - {year_price} ⭐️
+
+🎁 Что вы получите:
+• Безлимитные расчеты даров
+• Дар дня с ИИ анализом
+• Полный анализ
+• Персональные рекомендации
+
+_Нажмите кнопку ниже для оформления подписки_""".format(
+            month_price=Config.PREMIUM_MONTH_PRICE,
+            year_price=Config.PREMIUM_YEAR_PRICE
+        )
+        await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        return
+    
+    try:
+        # Отправляем сообщение о начале обработки
+        processing_msg = await message.answer(
+            "🔮 ИИ обрабатывает запрос...\n⏳ Пожалуйста, подождите...",
+            parse_mode="Markdown"
+        )
+        
+        # Рассчитываем дар дня (используется текущая дата)
+        day_gift_data = calculator.calculate_day_gift()
+        
+        if day_gift_data['status'] == 'error':
+            await processing_msg.delete()
+            await message.answer(
+                f"❌ Ошибка при расчете: {day_gift_data['error']}",
+                reply_markup=get_main_menu()
+            )
+            return
+        
+        # Получаем трактовку от ИИ
+        interpretation = await ai_handler.get_day_gift_interpretation(day_gift_data)
+        
+        # Удаляем сообщение о обработке
+        await processing_msg.delete()
+        
+        # Отправляем результат
+        await message.answer(
+            interpretation,
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка при расчете дара дня: {e}", exc_info=True)
+        try:
+            if 'processing_msg' in locals():
+                await processing_msg.delete()
+        except:
+            pass
+        await message.answer(
+            f"❌ Произошла ошибка при расчете:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
+        )
+
 @dp.message(F.text == "⚗️ Алхимия даров")
 async def button_alchemy(message: Message, state: FSMContext):
     """Кнопка алхимии даров"""

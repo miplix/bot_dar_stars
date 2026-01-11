@@ -444,4 +444,80 @@ class GiftsCalculator:
                 "status": "error",
                 "error": str(e)
             }
+    
+    # ============ ДАР ДНЯ ============
+    
+    def calculate_day_gift(self, date_str: str = None) -> Dict:
+        """
+        Расчет дара дня по текущей дате
+        Ма = д+д+м+м (≤9)
+        Жи = г+г+г+г (≤9)
+        Кун = ма+жи (≤9)
+        
+        Args:
+            date_str: Дата в формате ДД.ММ.ГГГГ (если None, используется текущая дата)
+        
+        Returns:
+            Словарь с результатами расчета
+        """
+        try:
+            if date_str:
+                day, month, year = self.parse_date(date_str)
+            else:
+                # Используем текущую дату
+                now = datetime.now()
+                day = now.day
+                month = now.month
+                year = now.year
+                date_str = f"{day:02d}.{month:02d}.{year}"
+            
+            # Ма = д+д+м+м (сумма всех цифр дня и месяца)
+            ma = self.calculate_ma(day, month)
+            
+            # Жи = г+г+г+г (сумма всех цифр года)
+            ji = self.calculate_ji(year)
+            
+            # Кун = ма+жи
+            kun = self.calculate_kun(ma, ji)
+            
+            # Формируем код дара
+            gift_code = f"{ma}-{ji}-{kun}"
+            
+            # Формируем детали расчета
+            ma_calculation = f"Ма = цифры({day:02d}) + цифры({month:02d}) = {self.sum_digits(day)} + {self.sum_digits(month)} = {self.sum_digits(day) + self.sum_digits(month)}"
+            if self.sum_digits(day) + self.sum_digits(month) > 9:
+                ma_calculation += f" → {ma}"
+            else:
+                ma_calculation += f" = {ma}"
+            
+            ji_calculation = f"Жи = цифры({year}) = {self.sum_digits(year)}"
+            if self.sum_digits(year) > 9:
+                ji_calculation += f" → {ji}"
+            else:
+                ji_calculation += f" = {ji}"
+            
+            kun_calculation = f"Кун = Ма + Жи = {ma} + {ji} = {ma + ji}"
+            if ma + ji > 9:
+                kun_calculation += f" → {kun}"
+            else:
+                kun_calculation += f" = {kun}"
+            
+            return {
+                "date": date_str,
+                "gift_code": gift_code,
+                "ma": ma,
+                "ji": ji,
+                "kun": kun,
+                "calculation_details": {
+                    "ma": ma_calculation,
+                    "ji": ji_calculation,
+                    "kun": kun_calculation
+                },
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
 
