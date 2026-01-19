@@ -4,17 +4,31 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from config import Config
 
-def get_main_menu() -> ReplyKeyboardMarkup:
-    """Главное меню бота"""
-    keyboard = [
-        [KeyboardButton(text="🎁 Рассчитать дары")],
-        [KeyboardButton(text="🎭 Полный профиль")],
-        [KeyboardButton(text="⚗️ Алхимия даров")],
-        [KeyboardButton(text="📿 Сантры")],
-        [KeyboardButton(text="🔮 Анализ слов")],
-        [KeyboardButton(text="🌟 Дар дня"), KeyboardButton(text="🔮 Предсказания")],
-        [KeyboardButton(text="💎 Подписка"), KeyboardButton(text="❓ Помощь")]
-    ]
+def get_main_menu(subscription: dict = None) -> ReplyKeyboardMarkup:
+    """
+    Главное меню бота
+    
+    Args:
+        subscription: Информация о подписке. Если None или подписка не активна,
+                     показывается только "Подписка" и "Помощь"
+    """
+    # Если нет подписки или подписка не активна, показываем только "Подписка" и "Помощь"
+    if subscription is None or not subscription.get('active', False):
+        keyboard = [
+            [KeyboardButton(text="💎 Подписка"), KeyboardButton(text="❓ Помощь")]
+        ]
+    else:
+        # Полное меню для пользователей с активной подпиской
+        keyboard = [
+            [KeyboardButton(text="🎁 Рассчитать дары")],
+            [KeyboardButton(text="🎭 Полный профиль")],
+            [KeyboardButton(text="⚗️ Алхимия даров")],
+            [KeyboardButton(text="📿 Сантры")],
+            [KeyboardButton(text="🔮 Анализ слов")],
+            [KeyboardButton(text="🌟 Дар дня"), KeyboardButton(text="🔮 Предсказания")],
+            [KeyboardButton(text="💎 Подписка"), KeyboardButton(text="❓ Помощь")]
+        ]
+    
     return ReplyKeyboardMarkup(
         keyboard=keyboard,
         resize_keyboard=True,

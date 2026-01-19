@@ -14,6 +14,7 @@ from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.exceptions import TelegramBadRequest
 
 from config import Config
 from database import Database
@@ -35,6 +36,32 @@ db = Database()
 calculator = GiftsCalculator()
 ai_handler = AIHandler()
 alphabet_analyzer = AlphabetAnalyzer(db, ai_handler)
+
+# Вспомогательная функция для безопасного редактирования сообщений
+async def safe_edit_text(message, text: str, reply_markup=None, parse_mode=None, **kwargs):
+    """
+    Безопасное редактирование сообщения с обработкой ошибки 'message is not modified'
+    
+    Args:
+        message: Сообщение для редактирования (Message или CallbackQuery.message)
+        text: Текст сообщения
+        reply_markup: Разметка клавиатуры (опционально)
+        parse_mode: Режим парсинга (опционально)
+        **kwargs: Дополнительные параметры для edit_text
+    
+    Returns:
+        bool: True если редактирование успешно, False если сообщение не изменилось
+    """
+    try:
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode, **kwargs)
+        return True
+    except TelegramBadRequest as e:
+        # Игнорируем ошибку "message is not modified" - это не критично
+        if "message is not modified" in str(e).lower():
+            return False
+        # Если другая ошибка - логируем и пробрасываем
+        logger.error(f"Ошибка при редактировании сообщения: {e}", exc_info=True)
+        raise
 
 # Состояния FSM
 class UserStates(StatesGroup):
@@ -118,7 +145,7 @@ async def cmd_start(message: Message):
     
     welcome_text += "\n📝 Используйте меню ниже для начала работы:"
     
-    await message.answer(welcome_text, reply_markup=get_main_menu(), parse_mode="Markdown")
+    await message.answer(welcome_text, reply_markup=get_main_menu(subscription), parse_mode="Markdown")
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -162,7 +189,9 @@ _Влияние имени на судьбу_
 
 🤖 Бот использует ИИ для глубокого анализа вашего дара и практических рекомендаций.
 """
-    await message.answer(help_text, reply_markup=get_main_menu(), parse_mode="Markdown")
+    user_id = message.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    await message.answer(help_text, reply_markup=get_main_menu(subscription), parse_mode="Markdown")
 
 @dp.message(Command("calculate"))
 async def cmd_calculate(message: Message, state: FSMContext):
@@ -299,9 +328,11 @@ _Нажмите кнопку ниже для оформления подписк
         await processing_msg.delete()
         
         # Отправляем результат с Markdown форматированием
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             interpretation, 
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
         
@@ -309,9 +340,11 @@ _Нажмите кнопку ниже для оформления подписк
         
     except Exception as e:
         logger.error(f"Ошибка при расчете даров: {e}")
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             "❌ Произошла ошибка при расчете. Попробуйте еще раз.",
-            reply_markup=get_main_menu()
+            reply_markup=get_main_menu(subscription)
         )
         await state.clear()
 
@@ -457,9 +490,11 @@ async def process_location_text(message: Message, state: FSMContext):
     
     # Проверяем на отмену
     if text == "❌ Отмена":
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             "❌ Комплексный расчет отменен.",
-            reply_markup=get_main_menu()
+            reply_markup=get_main_menu(subscription)
         )
         await state.clear()
         return
@@ -558,9 +593,11 @@ async def process_last_name(message: Message, state: FSMContext):
         
         if results['status'] == 'error':
             await processing_msg.delete()
+            user_id = message.from_user.id
+            subscription = await check_subscription_with_admin(user_id)
             await message.answer(
                 f"❌ Ошибка при расчете: {results['error']}",
-                reply_markup=get_main_menu()
+                reply_markup=get_main_menu(subscription)
             )
             await state.clear()
             return
@@ -611,9 +648,11 @@ async def process_last_name(message: Message, state: FSMContext):
                     else:
                         await message.answer(part, parse_mode="Markdown")
             else:
+                user_id = message.from_user.id
+                subscription = await check_subscription_with_admin(user_id)
                 await message.answer(
                     interpretation,
-                    reply_markup=get_main_menu(),
+                    reply_markup=get_main_menu(subscription),
                     parse_mode="Markdown"
                 )
             
@@ -643,9 +682,11 @@ async def process_last_name(message: Message, state: FSMContext):
 
 """.format(error=str(ai_error)[:200])
             
+            user_id = message.from_user.id
+            subscription = await check_subscription_with_admin(user_id)
             await message.answer(
                 error_notice + basic_interpretation,
-                reply_markup=get_main_menu(),
+                reply_markup=get_main_menu(subscription),
                 parse_mode="Markdown"
             )
             
@@ -661,9 +702,11 @@ async def process_last_name(message: Message, state: FSMContext):
         except:
             pass
         
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             f"❌ Произошла ошибка при расчете:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
         await state.clear()
@@ -725,8 +768,10 @@ async def back_to_subscription(callback: CallbackQuery):
         
         if level == 'orden':
             text += "\n👑 Вам доступны ВСЕ функции бота, включая алхимию, сантры и анализ слов!"
-        elif level == 'pro':
-            text += "\n⭐ Вам доступны базовые функции. Для алхимии, сантр и анализа слов нужна подписка ORDEN."
+        elif level == 'pro' or level == 'trial':
+            # TRIAL имеет те же права что PRO
+            level_text = 'PRO' if level == 'pro' else 'Trial'
+            text += f"\n⭐ Вам доступны функции {level_text}. Для алхимии, сантр и анализа слов нужна подписка ORDEN."
         else:
             text += "\n🎁 Вам доступны базовые функции. Оформите подписку для расширенного доступа."
     else:
@@ -1051,8 +1096,10 @@ async def successful_payment_handler(message: Message, state: FSMContext):
 • 📿 Сантры
 • 🔮 Анализ слов
 • Предсказания и рекомендации"""
-    elif level == 'pro':
-        text += """⭐ Теперь вам доступны функции PRO:
+    elif level == 'pro' or level == 'trial':
+        # TRIAL имеет те же права что PRO
+        level_text = 'PRO' if level == 'pro' else 'Trial'
+        text += f"""⭐ Теперь вам доступны функции {level_text}:
 • Безлимитные расчеты даров
 • Полный анализ с ИИ
 • Предсказания и рекомендации
@@ -1067,7 +1114,9 @@ async def successful_payment_handler(message: Message, state: FSMContext):
     
     text += "\n\nСпасибо за поддержку! 🙏"
     
-    await message.answer(text, parse_mode="Markdown", reply_markup=get_main_menu())
+    user_id = message.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    await message.answer(text, parse_mode="Markdown", reply_markup=get_main_menu(subscription))
 
 # ============= ОБРАБОТЧИКИ САНТР =============
 
@@ -1146,7 +1195,9 @@ async def back_to_main_alchemy(callback: CallbackQuery, state: FSMContext):
 🎁 Я помогу вам раскрыть ваши дары, заложенные при рождении по древнеславянской системе *Ма-Жи-Кун*.
 
 📝 Используйте меню ниже для начала работы:"""
-    await callback.message.answer(welcome_text, reply_markup=get_main_menu(), parse_mode="Markdown")
+    user_id = callback.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    await callback.message.answer(welcome_text, reply_markup=get_main_menu(subscription), parse_mode="Markdown")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("mantra_create_"))
@@ -1726,9 +1777,11 @@ _Нажмите кнопку ниже для оформления подписк
         
         if day_gift_data['status'] == 'error':
             await processing_msg.delete()
+            user_id = message.from_user.id
+            subscription = await check_subscription_with_admin(user_id)
             await message.answer(
                 f"❌ Ошибка при расчете: {day_gift_data['error']}",
-                reply_markup=get_main_menu()
+                reply_markup=get_main_menu(subscription)
             )
             return
         
@@ -1739,9 +1792,11 @@ _Нажмите кнопку ниже для оформления подписк
         await processing_msg.delete()
         
         # Отправляем результат
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             interpretation,
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
         
@@ -1752,9 +1807,11 @@ _Нажмите кнопку ниже для оформления подписк
                 await processing_msg.delete()
         except:
             pass
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             f"❌ Произошла ошибка при расчете:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
 
@@ -1961,12 +2018,14 @@ async def process_prediction_event_text(message: Message, state: FSMContext):
         
         # Отправляем результат
         max_length = 4000
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         if len(interpretation) > max_length:
             parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
             for part in parts:
                 await message.answer(part, parse_mode="Markdown")
         else:
-            await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+            await message.answer(interpretation, reply_markup=get_main_menu(subscription), parse_mode="Markdown")
         
         await state.clear()
         
@@ -1976,9 +2035,11 @@ async def process_prediction_event_text(message: Message, state: FSMContext):
             await processing_msg.delete()
         except:
             pass
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             f"❌ Произошла ошибка:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
         await state.clear()
@@ -2028,12 +2089,14 @@ async def process_prediction_partner_birth_date(message: Message, state: FSMCont
             
             # Отправляем результат
             max_length = 4000
+            user_id = message.from_user.id
+            subscription = await check_subscription_with_admin(user_id)
             if len(interpretation) > max_length:
                 parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
                 for part in parts:
                     await message.answer(part, parse_mode="Markdown")
             else:
-                await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+                await message.answer(interpretation, reply_markup=get_main_menu(subscription), parse_mode="Markdown")
             
             await state.clear()
             
@@ -2043,9 +2106,11 @@ async def process_prediction_partner_birth_date(message: Message, state: FSMCont
                 await processing_msg.delete()
             except:
                 pass
+            user_id = message.from_user.id
+            subscription = await check_subscription_with_admin(user_id)
             await message.answer(
                 f"❌ Произошла ошибка:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
-                reply_markup=get_main_menu(),
+                reply_markup=get_main_menu(subscription),
                 parse_mode="Markdown"
             )
             await state.clear()
@@ -2094,12 +2159,14 @@ async def process_prediction_day_calculation(message: Message, state: FSMContext
         
         # Отправляем результат
         max_length = 4000
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         if len(interpretation) > max_length:
             parts = [interpretation[i:i+max_length] for i in range(0, len(interpretation), max_length)]
             for part in parts:
                 await message.answer(part, parse_mode="Markdown")
         else:
-            await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+            await message.answer(interpretation, reply_markup=get_main_menu(subscription), parse_mode="Markdown")
         
         await state.clear()
         
@@ -2109,9 +2176,11 @@ async def process_prediction_day_calculation(message: Message, state: FSMContext
             await processing_msg.delete()
         except:
             pass
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             f"❌ Произошла ошибка:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
         await state.clear()
@@ -2256,10 +2325,12 @@ _Нажмите кнопку ниже для оформления подписк
             await processing_msg.delete()
         except:
             pass
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             "❌ Ошибка: не найдены позиции Ма-Жи-Кун в базе данных.\n"
             "Обратитесь к администратору.",
-            reply_markup=get_main_menu()
+            reply_markup=get_main_menu(subscription)
         )
         await state.clear()
         return
@@ -2270,11 +2341,13 @@ _Нажмите кнопку ниже для оформления подписк
             await processing_msg.delete()
         except:
             pass
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             f"❌ Ошибка: не найдены поля в базе данных.\n"
             f"Проверьте, что поля {ma_num}, {zhi_num}, {kun_num} существуют.\n"
             "Обратитесь к администратору.",
-            reply_markup=get_main_menu()
+            reply_markup=get_main_menu(subscription)
         )
         await state.clear()
         return
@@ -2343,7 +2416,9 @@ _Нажмите кнопку ниже для оформления подписк
                 else:
                     await message.answer(part, parse_mode="Markdown")
         else:
-            await message.answer(interpretation, reply_markup=get_main_menu(), parse_mode="Markdown")
+            user_id = message.from_user.id
+            subscription = await check_subscription_with_admin(user_id)
+            await message.answer(interpretation, reply_markup=get_main_menu(subscription), parse_mode="Markdown")
         
         await state.clear()
         
@@ -2355,9 +2430,11 @@ _Нажмите кнопку ниже для оформления подписк
         except:
             pass
         
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             f"❌ Произошла ошибка при анализе:\n\n`{str(e)[:300]}`\n\nПопробуйте еще раз позже.",
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
         await state.clear()
@@ -2563,12 +2640,14 @@ async def process_promocode(message: Message, state: FSMContext):
         sub_type_name = "ORDEN" if sub_type == 'orden' else "PRO"
         access_text = "полный доступ ко всем функциям, включая алхимию, сантры и анализ слов" if sub_type == 'orden' else "доступ к базовым функциям (без алхимии, сантр и анализа слов)"
         
+        user_id = message.from_user.id
+        subscription = await check_subscription_with_admin(user_id)
         await message.answer(
             f"✅ *Промокод активирован!*\n\n"
             f"🎉 Вам выдана подписка *{sub_type_name}* на *{days} дней*!\n"
             f"💫 Действительна до: `{end_date.strftime('%d.%m.%Y %H:%M')}`\n\n"
             f"Теперь у вас {access_text}!",
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(subscription),
             parse_mode="Markdown"
         )
     
@@ -2913,7 +2992,7 @@ async def admin_stats(callback: CallbackQuery):
     text += f"\n*Всего*: {total_users} пользователей\n"
     text += f"*Активных*: {active_users} подписок"
     
-    await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+    await safe_edit_text(callback.message, text, reply_markup=get_admin_menu(), parse_mode="Markdown")
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_list_users")
@@ -2985,14 +3064,15 @@ async def admin_list_users(callback: CallbackQuery):
     text += f"⭐ Premium: {premium_count}\n"
     text += f"🔴 Истекших: {expired_count}"
     
-    await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+    await safe_edit_text(callback.message, text, reply_markup=get_admin_menu(), parse_mode="Markdown")
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_cancel")
 async def admin_cancel(callback: CallbackQuery, state: FSMContext):
     """Отмена админской операции"""
     await state.clear()
-    await callback.message.edit_text(
+    await safe_edit_text(
+        callback.message,
         "👑 *Админ-панель*\n\nОперация отменена.",
         reply_markup=get_admin_menu(),
         parse_mode="Markdown"
@@ -3047,8 +3127,9 @@ def check_feature_access(subscription: dict, required_level: str) -> bool:
     
     level = subscription.get('level', 'trial')
     
-    # Иерархия уровней: trial < pro < orden
-    level_hierarchy = {'trial': 0, 'pro': 1, 'orden': 2}
+    # Иерархия уровней: trial = pro < orden
+    # TRIAL имеет те же права что PRO для доступа к функциям
+    level_hierarchy = {'trial': 1, 'pro': 1, 'orden': 2}
     user_level = level_hierarchy.get(level, 0)
     required = level_hierarchy.get(required_level, 0)
     
