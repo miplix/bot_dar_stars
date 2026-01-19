@@ -7,6 +7,7 @@ import json
 import logging
 import sys
 import os
+import types
 
 # Добавляем корневую директорию в путь
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,37 +16,37 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Глобальная переменная для отслеживания инициализации
+# Глобальные переменные для отслеживания инициализации
 _initialized = False
 _init_lock = None
-
-# Импортируем компоненты бота
 dp = None
 bot = None
 init_bot_components = None
 _import_error = None
 
+# Определяем ensure_initialized как обычную async функцию
+async def ensure_initialized():
+    """Обеспечивает инициализацию компонентов бота"""
+    global _initialized, _init_lock, dp, bot, init_bot_components
+    if not _initialized and dp and bot and init_bot_components:
+        if _init_lock is None:
+            _init_lock = asyncio.Lock()
+        async with _init_lock:
+            if not _initialized:
+                logger.info("Инициализация компонентов бота...")
+                try:
+                    await init_bot_components()
+                    _initialized = True
+                    logger.info("Компоненты бота инициализированы")
+                except Exception as init_error:
+                    logger.error(f"Ошибка при инициализации: {init_error}", exc_info=True)
+                    raise
+
+# Импортируем компоненты бота
 try:
     logger.info("Импорт компонентов бота...")
     from bot import dp, bot, init_bot_components
     logger.info("Компоненты бота успешно импортированы")
-    
-    async def ensure_initialized():
-        """Обеспечивает инициализацию компонентов бота"""
-        global _initialized, _init_lock
-        if not _initialized:
-            if _init_lock is None:
-                _init_lock = asyncio.Lock()
-            async with _init_lock:
-                if not _initialized:
-                    logger.info("Инициализация компонентов бота...")
-                    try:
-                        await init_bot_components()
-                        _initialized = True
-                        logger.info("Компоненты бота инициализированы")
-                    except Exception as init_error:
-                        logger.error(f"Ошибка при инициализации: {init_error}", exc_info=True)
-                        raise
 except Exception as e:
     _import_error = str(e)
     logger.error(f"Ошибка при импорте бота: {e}", exc_info=True)
@@ -55,6 +56,7 @@ except Exception as e:
     bot = None
     init_bot_components = None
 
+# Определяем handler ПОСЛЕ всех импортов
 def handler(req):
     """
     Обработчик для Vercel serverless функции
@@ -84,7 +86,7 @@ def handler(req):
             }
         
         # Обработка GET запроса (для проверки работоспособности)
-        method = getattr(req, 'method', None) or req.get('method', 'GET')
+        method = getattr(req, 'method', None) or (req.get('method', 'GET') if isinstance(req, dict) else 'GET')
         if method == 'GET':
             return {
                 'statusCode': 200,
@@ -96,7 +98,6 @@ def handler(req):
             }
         
         # Обработка POST запроса от Telegram
-        method = getattr(req, 'method', None) or req.get('method', 'GET')
         if method != 'POST':
             return {
                 'statusCode': 405,
@@ -105,7 +106,7 @@ def handler(req):
             }
         
         # Получаем тело запроса
-        body = getattr(req, 'body', None) or req.get('body', None)
+        body = getattr(req, 'body', None) or (req.get('body', None) if isinstance(req, dict) else None)
         if body is None:
             return {
                 'statusCode': 400,
@@ -171,3 +172,8 @@ def handler(req):
             'body': json.dumps({'ok': False, 'error': str(e)[:200]})
         }
 
+# Убеждаемся, что handler является функцией (для Vercel)
+# Это нужно, чтобы Vercel правильно определял handler
+if not isinstance(handler, types.FunctionType):
+    logger.error(f"Handler is not a function! Type: {type(handler)}")
+    raise TypeError(f"Handler must be a function, got {type(handler)}")
