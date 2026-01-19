@@ -2825,41 +2825,52 @@ async def admin_promo_max_uses_entered(message: Message, state: FSMContext):
         value = data['promo_value']
         
         # Создаем промокод
-        if promo_type == 'subscription':
-            sub_type = data.get('promo_sub_type', 'pro')  # По умолчанию pro
-            await db.create_promocode(
-                code=code,
-                promo_type='subscription',
-                created_by=user_id,
-                subscription_days=value,
-                subscription_type=sub_type,
-                max_uses=max_uses if max_uses > 0 else None
+        try:
+            if promo_type == 'subscription':
+                sub_type = data.get('promo_sub_type', 'pro')  # По умолчанию pro
+                await db.create_promocode(
+                    code=code,
+                    promo_type='subscription',
+                    created_by=user_id,
+                    subscription_days=value,
+                    subscription_type=sub_type,
+                    max_uses=max_uses if max_uses > 0 else None
+                )
+                sub_type_name = "PRO" if sub_type == 'pro' else "ORDEN"
+                type_desc = f"🎁 Подписка {sub_type_name} на {value} дней"
+            else:
+                await db.create_promocode(
+                    code=code,
+                    promo_type='discount',
+                    created_by=user_id,
+                    discount_percent=value,
+                    max_uses=max_uses if max_uses > 0 else None
+                )
+                type_desc = f"💰 Скидка {value}%"
+            
+            uses_desc = "♾ Безлимит" if max_uses == 0 else f"🔢 {max_uses} использований"
+            
+            await message.answer(
+                f"✅ *Промокод создан!*\n\n"
+                f"🎟 Код: `{code}`\n"
+                f"{type_desc}\n"
+                f"{uses_desc}\n\n"
+                f"Пользователи могут ввести этот код в разделе подписок.",
+                reply_markup=get_admin_menu(),
+                parse_mode="Markdown"
             )
-            sub_type_name = "PRO" if sub_type == 'pro' else "ORDEN"
-            type_desc = f"🎁 Подписка {sub_type_name} на {value} дней"
-        else:
-            await db.create_promocode(
-                code=code,
-                promo_type='discount',
-                created_by=user_id,
-                discount_percent=value,
-                max_uses=max_uses if max_uses > 0 else None
+            
+            await state.clear()
+        except Exception as e:
+            logger.error(f"Ошибка при создании промокода: {e}", exc_info=True)
+            await message.answer(
+                f"❌ *Ошибка при создании промокода*\n\n"
+                f"Произошла ошибка: `{str(e)[:200]}`\n\n"
+                f"Попробуйте еще раз или обратитесь к администратору.",
+                reply_markup=get_admin_menu(),
+                parse_mode="Markdown"
             )
-            type_desc = f"💰 Скидка {value}%"
-        
-        uses_desc = "♾ Безлимит" if max_uses == 0 else f"🔢 {max_uses} использований"
-        
-        await message.answer(
-            f"✅ *Промокод создан!*\n\n"
-            f"🎟 Код: `{code}`\n"
-            f"{type_desc}\n"
-            f"{uses_desc}\n\n"
-            f"Пользователи могут ввести этот код в разделе подписок.",
-            reply_markup=get_admin_menu(),
-            parse_mode="Markdown"
-        )
-        
-        await state.clear()
+            await state.clear()
         
     except ValueError:
         await message.answer("❌ Введите число!")

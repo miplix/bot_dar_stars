@@ -444,14 +444,26 @@ class Database:
             subscription_type: Тип подписки ('pro' или 'orden') для subscription промокодов
             max_uses: Максимальное количество использований (None = безлимит)
         """
-        async with aiosqlite.connect(self.db_path) as db:
-            created_date = datetime.now().isoformat()
-            await db.execute("""
-                INSERT INTO promocodes 
-                (code, type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (code, promo_type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by))
-            await db.commit()
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                created_date = datetime.now().isoformat()
+                cursor = await conn.execute("""
+                    INSERT INTO promocodes 
+                    (code, type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (code, promo_type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by))
+                await conn.commit()
+                
+                # Получаем ID созданного промокода для проверки
+                promo_id = cursor.lastrowid
+                logger.info(f"Промокод {code} успешно создан с ID {promo_id}")
+                
+        except Exception as e:
+            logger.error(f"Ошибка при создании промокода {code}: {e}", exc_info=True)
+            raise
     
     async def get_promocode(self, code: str):
         """Получение промокода по коду"""
