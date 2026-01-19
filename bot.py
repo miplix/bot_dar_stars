@@ -2540,6 +2540,78 @@ async def admin_stats(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
     await callback.answer()
 
+@dp.callback_query(F.data == "admin_list_users")
+async def admin_list_users(callback: CallbackQuery):
+    """Список пользователей с подписками"""
+    user_id = callback.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    users = await db.get_all_users_with_subscriptions(limit=50)
+    
+    if not users:
+        text = "👥 *Пользователи*\n\n❌ Пользователи не найдены"
+        await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+        await callback.answer()
+        return
+    
+    from datetime import datetime
+    
+    text = f"👥 *Пользователи* ({len(users)})\n\n"
+    
+    active_count = 0
+    expired_count = 0
+    trial_count = 0
+    premium_count = 0
+    
+    for user in users[:20]:  # Показываем первые 20
+        user_id_val = user['user_id']
+        username = user['username'] or "—"
+        first_name = user['first_name'] or "—"
+        sub_type = user['subscription_type'] or "—"
+        sub_end = user['subscription_end_date']
+        is_admin = "👑" if user['is_admin'] == 1 else ""
+        
+        # Определяем статус подписки
+        status = ""
+        if sub_end:
+            try:
+                end_date = datetime.fromisoformat(sub_end)
+                now = datetime.now()
+                if end_date > now:
+                    days_left = (end_date - now).days
+                    status = f"🟢 ({days_left}д)"
+                    active_count += 1
+                    if sub_type.startswith('premium'):
+                        premium_count += 1
+                else:
+                    status = "🔴"
+                    expired_count += 1
+            except:
+                status = "⚠️"
+        elif sub_type == "trial":
+            status = "🟡"
+            trial_count += 1
+        else:
+            status = "⚪"
+        
+        text += f"{is_admin} *{user_id_val}* | @{username}\n"
+        text += f"   {first_name} | {sub_type} {status}\n\n"
+    
+    if len(users) > 20:
+        text += f"\n... и еще {len(users) - 20} пользователей\n"
+    
+    text += f"\n📊 *Статистика:*\n"
+    text += f"🟢 Активных: {active_count}\n"
+    text += f"🟡 Trial: {trial_count}\n"
+    text += f"⭐ Premium: {premium_count}\n"
+    text += f"🔴 Истекших: {expired_count}"
+    
+    await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+    await callback.answer()
+
 @dp.callback_query(F.data == "admin_cancel")
 async def admin_cancel(callback: CallbackQuery, state: FSMContext):
     """Отмена админской операции"""

@@ -92,6 +92,7 @@ def get_admin_menu() -> InlineKeyboardMarkup:
     keyboard = [
         [InlineKeyboardButton(text="➕ Создать промокод", callback_data="admin_create_promo")],
         [InlineKeyboardButton(text="📋 Список промокодов", callback_data="admin_list_promos")],
+        [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_list_users")],
         [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

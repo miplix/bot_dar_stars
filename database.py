@@ -302,6 +302,25 @@ class Database:
             """)
             return await cursor.fetchall()
     
+    async def get_all_users_with_subscriptions(self, limit: int = 50):
+        """Получение списка пользователей с подписками"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("""
+                SELECT 
+                    user_id,
+                    username,
+                    first_name,
+                    registration_date,
+                    subscription_type,
+                    subscription_end_date,
+                    is_admin
+                FROM users
+                ORDER BY registration_date DESC
+                LIMIT ?
+            """, (limit,))
+            return await cursor.fetchall()
+    
     async def init_alphabet_data(self):
         """Инициализация данных алфавита"""
         alphabet_data = [
