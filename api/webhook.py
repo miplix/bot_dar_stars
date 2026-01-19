@@ -138,6 +138,18 @@ def _handler_function(req):
             # Инициализируем компоненты если нужно
             await ensure_initialized()
             
+            # Переинициализируем сессию бота для текущего event loop
+            # Это необходимо для корректной работы в serverless окружении
+            if bot and bot.session:
+                try:
+                    await bot.session.close()
+                except Exception:
+                    pass  # Игнорируем ошибки при закрытии старой сессии
+            
+            # Создаем новую сессию для текущего event loop
+            from aiogram.client.session.aiohttp import AiohttpSession
+            bot.session = AiohttpSession()
+            
             # Преобразуем словарь в объект Update
             update = Update(**update_data)
             
@@ -149,8 +161,8 @@ def _handler_function(req):
         # Обрабатываем обновление
         try:
             # Используем asyncio.run() для создания нового event loop
-            # Это необходимо для корректной работы aiohttp таймаутов в serverless окружении
-            # В Vercel каждая функция выполняется изолированно, поэтому новый loop безопасен
+            # Это необходимо для корректной работы aiohttp таймаутов
+            # В serverless окружении каждый запрос выполняется изолированно
             asyncio.run(process_update())
             
         except Exception as e:
