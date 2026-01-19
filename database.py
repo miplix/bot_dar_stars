@@ -373,10 +373,24 @@ class Database:
     async def set_admin(self, user_id: int, is_admin: bool = True):
         """Выдать/снять права администратора"""
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "UPDATE users SET is_admin = ? WHERE user_id = ?",
-                (1 if is_admin else 0, user_id)
-            )
+            # Проверяем, существует ли пользователь
+            cursor = await db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+            existing_user = await cursor.fetchone()
+            
+            if not existing_user:
+                # Пользователь не существует - создаем его с правами администратора
+                registration_date = datetime.now().isoformat()
+                await db.execute("""
+                    INSERT INTO users 
+                    (user_id, username, first_name, registration_date, is_admin)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (user_id, None, None, registration_date, 1 if is_admin else 0))
+            else:
+                # Пользователь существует - обновляем права
+                await db.execute(
+                    "UPDATE users SET is_admin = ? WHERE user_id = ?",
+                    (1 if is_admin else 0, user_id)
+                )
             await db.commit()
     
     async def get_all_admins(self):
