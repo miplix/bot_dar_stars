@@ -1,0 +1,24 @@
+# Игнорируем ненужные файлы при деплое на Vercel
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.db
+*.sqlite
+*.sqlite3
+data/
+.env
+.env.local
+*.log
+.vscode/
+.idea/
+*.md
+!VERCEL_SETUP.md
+!VERCEL_QUICKSTART.md
+test_*.py
+*.sh
+
