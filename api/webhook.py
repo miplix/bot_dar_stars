@@ -20,8 +20,15 @@ _initialized = False
 _init_lock = None
 
 # Импортируем компоненты бота
+dp = None
+bot = None
+init_bot_components = None
+_import_error = None
+
 try:
+    logger.info("Импорт компонентов бота...")
     from bot import dp, bot, init_bot_components
+    logger.info("Компоненты бота успешно импортированы")
     
     async def ensure_initialized():
         """Обеспечивает инициализацию компонентов бота"""
@@ -32,11 +39,18 @@ try:
             async with _init_lock:
                 if not _initialized:
                     logger.info("Инициализация компонентов бота...")
-                    await init_bot_components()
-                    _initialized = True
-                    logger.info("Компоненты бота инициализированы")
+                    try:
+                        await init_bot_components()
+                        _initialized = True
+                        logger.info("Компоненты бота инициализированы")
+                    except Exception as init_error:
+                        logger.error(f"Ошибка при инициализации: {init_error}", exc_info=True)
+                        raise
 except Exception as e:
+    _import_error = str(e)
     logger.error(f"Ошибка при импорте бота: {e}", exc_info=True)
+    import traceback
+    logger.error(f"Traceback: {traceback.format_exc()}")
     dp = None
     bot = None
     init_bot_components = None
@@ -54,10 +68,19 @@ def handler(req):
     try:
         # Проверяем наличие компонентов
         if dp is None or bot is None:
+            error_msg = 'Bot components not initialized'
+            if _import_error:
+                error_msg += f': {_import_error}'
+            logger.error(error_msg)
             return {
                 'statusCode': 500,
                 'headers': {'Content-Type': 'application/json'},
-                'body': json.dumps({'error': 'Bot components not initialized'})
+                'body': json.dumps({
+                    'ok': False,
+                    'error': error_msg,
+                    'details': 'Make sure BOT_TOKEN, DEEPSEEK_API_KEY, and ADMIN_IDS are set in Vercel environment variables',
+                    'import_error': _import_error if _import_error else None
+                })
             }
         
         # Обработка GET запроса (для проверки работоспособности)
@@ -92,8 +115,15 @@ def handler(req):
             update_data = json.loads(body)
         elif isinstance(body, bytes):
             update_data = json.loads(body.decode('utf-8'))
-        else:
+        elif isinstance(body, dict):
             update_data = body  # Если уже dict
+        else:
+            logger.error(f"Unknown body type: {type(body)}")
+            return {
+                'statusCode': 400,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'error': 'Invalid request body format'})
+            }
         
         logger.info(f"Получено обновление: {update_data.get('update_id')}")
         
