@@ -44,14 +44,25 @@ class Config:
     DEEPSEEK_API_URL = os.getenv('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1')
     
     # Database
-    # На Vercel используем /tmp директорию (единственная доступная для записи)
-    # В локальной разработке используем data/bot_database.db
-    default_db_path = 'data/bot_database.db'
-    if os.getenv('VERCEL') or os.getenv('VERCEL_ENV'):
-        # Мы на Vercel - используем /tmp директорию
-        default_db_path = '/tmp/bot_database.db'
-        print("🌐 Обнаружена среда Vercel - используем /tmp для базы данных")
-    DATABASE_PATH = os.getenv('DATABASE_PATH', default_db_path)
+    # Поддержка Vercel Postgres (Neon) для продакшена
+    # и SQLite для локальной разработки
+    DATABASE_URL = os.getenv('POSTGRES_PRISMA_URL') or os.getenv('POSTGRES_URL') or os.getenv('DATABASE_URL', '')
+    
+    # Если установлен DATABASE_URL, используем PostgreSQL (Vercel Postgres)
+    # Иначе используем SQLite
+    USE_POSTGRESQL = bool(DATABASE_URL)
+    
+    if USE_POSTGRESQL:
+        print("🐘 Используется PostgreSQL (Vercel Postgres / Neon)")
+    else:
+        # SQLite для локальной разработки
+        default_db_path = 'data/bot_database.db'
+        if os.getenv('VERCEL') or os.getenv('VERCEL_ENV'):
+            # На Vercel без PostgreSQL БД не будет работать!
+            print("⚠️ ВНИМАНИЕ: На Vercel SQLite не работает! Установите Vercel Postgres и настройте DATABASE_URL")
+            default_db_path = '/tmp/bot_database.db'
+        DATABASE_PATH = os.getenv('DATABASE_PATH', default_db_path)
+        print(f"💾 Используется SQLite: {DATABASE_PATH}")
     
     # Подписки (цены в Telegram Stars)
     TRIAL_DURATION_DAYS = 7
