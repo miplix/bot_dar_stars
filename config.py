@@ -44,7 +44,14 @@ class Config:
     DEEPSEEK_API_URL = os.getenv('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1')
     
     # Database
-    DATABASE_PATH = os.getenv('DATABASE_PATH', 'data/bot_database.db')
+    # На Vercel используем /tmp директорию (единственная доступная для записи)
+    # В локальной разработке используем data/bot_database.db
+    default_db_path = 'data/bot_database.db'
+    if os.getenv('VERCEL') or os.getenv('VERCEL_ENV'):
+        # Мы на Vercel - используем /tmp директорию
+        default_db_path = '/tmp/bot_database.db'
+        print("🌐 Обнаружена среда Vercel - используем /tmp для базы данных")
+    DATABASE_PATH = os.getenv('DATABASE_PATH', default_db_path)
     
     # Подписки (цены в Telegram Stars)
     TRIAL_DURATION_DAYS = 7

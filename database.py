@@ -15,7 +15,10 @@ class Database:
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
         # Создаем директорию для базы данных, если её нет
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        # Проверяем, не находится ли файл в корне (например, /tmp/bot_database.db)
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir:  # Если путь содержит директорию (не корневой файл)
+            os.makedirs(db_dir, exist_ok=True)
         
         async with aiosqlite.connect(self.db_path) as db:
             # Таблица пользователей
