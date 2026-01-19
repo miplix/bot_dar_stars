@@ -61,6 +61,7 @@ class UserStates(StatesGroup):
     
     # Состояния для админов
     waiting_for_promo_type = State()
+    waiting_for_promo_sub_type = State()  # Выбор типа подписки (pro/orden) для промокода
     waiting_for_promo_value = State()
     waiting_for_promo_max_uses = State()
     
@@ -712,14 +713,22 @@ async def back_to_subscription(callback: CallbackQuery):
     subscription = await check_subscription_with_admin(user_id)
     
     if subscription['active']:
+        level = subscription.get('level', 'trial')
+        level_name = {'trial': 'Trial', 'pro': 'PRO', 'orden': 'ORDEN'}.get(level, subscription['type'].upper())
+        
         text = f"""✅ *Ваша подписка активна*
 
-Тип: *{subscription['type'].upper()}*
+Тип: *{level_name}*
 """
         if subscription.get('end_date'):
             text += f"Действительна до: `{subscription['end_date'].strftime('%d.%m.%Y %H:%M')}`\n"
         
-        text += "\n🎁 Вам доступны все функции бота!"
+        if level == 'orden':
+            text += "\n👑 Вам доступны ВСЕ функции бота, включая алхимию, сантры и анализ слов!"
+        elif level == 'pro':
+            text += "\n⭐ Вам доступны базовые функции. Для алхимии, сантр и анализа слов нужна подписка ORDEN."
+        else:
+            text += "\n🎁 Вам доступны базовые функции. Оформите подписку для расширенного доступа."
     else:
         text = f"""⚠️ *Подписка не активна*
 
@@ -747,29 +756,56 @@ async def subscription_info(callback: CallbackQuery):
 🎁 *Пробный период*
 • Длительность: {trial_days} дней
 • Предоставляется каждому новому пользователю
-• Доступ ко всем базовым функциям
+• Доступ к базовым функциям
 
-⭐️ *Премиум подписка*
+⭐️ *PRO подписка*
 
 *Что входит:*
-• ✅ Безлимитные расчеты даров
+• ✅ Безлимитные расчеты даров (Ода, Туна, Триа, Чиа)
 • ✅ Полный анализ с помощью ИИ
 • ✅ Подробные трактовки
-• ✅ Персональные рекомендации
-• ✅ Будущие функции (гадания, совместимость)
+• ✅ Предсказания
+• ✅ Мантры
+• ❌ Алхимия даров (только ORDEN)
+• ❌ Сантры (только ORDEN)
+• ❌ Анализ слов (только ORDEN)
 
-*Тарифы:*
+*Тарифы PRO:*
+📅 Месяц - {pro_month_price} ⭐️
+📆 Год - {pro_year_price} ⭐️
+
+👑 *ORDEN подписка*
+
+*Что входит:*
+• ✅ Всё из PRO
+• ✅ ⚗️ Алхимия даров
+• ✅ 📿 Сантры
+• ✅ 🔮 Анализ слов через алфавит
+• ✅ Полный доступ ко всем функциям
+
+👑 *ORDEN подписка* (только через промокоды)
+
+*Что входит:*
+• ✅ Всё из PRO
+• ✅ ⚗️ Алхимия даров
+• ✅ 📿 Сантры
+• ✅ 🔮 Анализ слов через алфавит
+• ✅ Полный доступ ко всем функциям
+
+💡 ORDEN подписка доступна только через промокоды от администраторов.
+
+*Тестовая подписка:*
 🧪 Тест - {test_price} ⭐️ (1 день для тестирования)
-📅 Месяц - {month_price} ⭐️
-📆 Год - {year_price} ⭐️ (выгода ~17%)
 
 💡 _Оплата через Telegram Stars_
 🔒 _Безопасно и моментально_
 """.format(
         trial_days=Config.TRIAL_DURATION_DAYS,
         test_price=Config.PREMIUM_TEST_PRICE,
-        month_price=Config.PREMIUM_MONTH_PRICE,
-        year_price=Config.PREMIUM_YEAR_PRICE
+        pro_month_price=Config.PRO_MONTH_PRICE,
+        pro_year_price=Config.PRO_YEAR_PRICE,
+        orden_month_price=Config.ORDEN_MONTH_PRICE,
+        orden_year_price=Config.ORDEN_YEAR_PRICE
     )
     
     await callback.message.edit_text(
@@ -799,7 +835,7 @@ async def buy_premium_test(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "buy_premium_month")
 async def buy_premium_month(callback: CallbackQuery, state: FSMContext):
-    """Покупка подписки на месяц"""
+    """Покупка подписки на месяц (старая версия - перенаправляем на PRO)"""
     data = await state.get_data()
     discount = data.get('active_discount', 0)
     promo_id = data.get('promo_id')
@@ -807,9 +843,9 @@ async def buy_premium_month(callback: CallbackQuery, state: FSMContext):
     await send_invoice(
         callback.message,
         callback.from_user.id,
-        "month",
-        Config.PREMIUM_MONTH_PRICE,
-        "Премиум подписка на 1 месяц",
+        "pro_month",
+        Config.PRO_MONTH_PRICE,
+        "PRO подписка на 1 месяц",
         discount=discount,
         promo_id=promo_id
     )
@@ -817,7 +853,8 @@ async def buy_premium_month(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "buy_premium_year")
 async def buy_premium_year(callback: CallbackQuery, state: FSMContext):
-    """Покупка подписки на год"""
+    """Покупка подписки на год (старая версия - оставляем для совместимости)"""
+    # Перенаправляем на PRO год
     data = await state.get_data()
     discount = data.get('active_discount', 0)
     promo_id = data.get('promo_id')
@@ -825,13 +862,50 @@ async def buy_premium_year(callback: CallbackQuery, state: FSMContext):
     await send_invoice(
         callback.message,
         callback.from_user.id,
-        "year",
-        Config.PREMIUM_YEAR_PRICE,
-        "Премиум подписка на 1 год",
+        "pro_year",
+        Config.PRO_YEAR_PRICE,
+        "PRO подписка на 1 год",
         discount=discount,
         promo_id=promo_id
     )
     await callback.answer()
+
+@dp.callback_query(F.data == "buy_pro_month")
+async def buy_pro_month(callback: CallbackQuery, state: FSMContext):
+    """Покупка PRO подписки на месяц"""
+    data = await state.get_data()
+    discount = data.get('active_discount', 0)
+    promo_id = data.get('promo_id')
+    
+    await send_invoice(
+        callback.message,
+        callback.from_user.id,
+        "pro_month",
+        Config.PRO_MONTH_PRICE,
+        "PRO подписка на 1 месяц",
+        discount=discount,
+        promo_id=promo_id
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "buy_pro_year")
+async def buy_pro_year(callback: CallbackQuery, state: FSMContext):
+    """Покупка PRO подписки на год"""
+    data = await state.get_data()
+    discount = data.get('active_discount', 0)
+    promo_id = data.get('promo_id')
+    
+    await send_invoice(
+        callback.message,
+        callback.from_user.id,
+        "pro_year",
+        Config.PRO_YEAR_PRICE,
+        "PRO подписка на 1 год",
+        discount=discount,
+        promo_id=promo_id
+    )
+    await callback.answer()
+
 
 async def send_invoice(message: Message, user_id: int, subscription_type: str, 
                       price: int, description: str, discount: int = 0, promo_id: int = None):
@@ -841,12 +915,25 @@ async def send_invoice(message: Message, user_id: int, subscription_type: str,
     if subscription_type == "test":
         title = "🧪 ТЕСТ - 1 день"
         desc = "Тестовая подписка на 1 день для проверки системы оплаты"
+    elif subscription_type == "pro_month":
+        title = "⭐ PRO - 1 месяц"
+        desc = "PRO подписка: базовые расчеты, предсказания, мантры. Без алхимии, сантр и анализа слов."
+    elif subscription_type == "pro_year":
+        title = "⭐ PRO - 1 год"
+        desc = "PRO подписка: базовые расчеты, предсказания, мантры. Без алхимии, сантр и анализа слов."
+    elif subscription_type == "orden_month":
+        title = "👑 ORDEN - 1 месяц"
+        desc = "ORDEN подписка: полный доступ ко всем функциям включая алхимию, сантры и анализ слов."
+    elif subscription_type == "orden_year":
+        title = "👑 ORDEN - 1 год"
+        desc = "ORDEN подписка: полный доступ ко всем функциям включая алхимию, сантры и анализ слов."
     elif subscription_type == "month":
-        title = "Премиум - 1 месяц"
-        desc = "Доступ ко всем функциям бота на 30 дней"
-    else:
-        title = "Премиум - 1 год"
-        desc = "Доступ ко всем функциям бота на 365 дней"
+        # Старая версия - перенаправляем на PRO
+        title = "⭐ PRO - 1 месяц"
+        desc = "PRO подписка: базовые расчеты, предсказания, мантры. Без алхимии, сантр и анализа слов."
+    else:  # year - старая версия
+        title = "⭐ PRO - 1 год"
+        desc = "PRO подписка: базовые расчеты, предсказания, мантры. Без алхимии, сантр и анализа слов."
     
     # Применяем скидку если есть
     final_price = price
@@ -885,7 +972,7 @@ async def successful_payment_handler(message: Message, state: FSMContext):
     
     # Парсим payload для определения типа подписки и промокода
     payload_parts = payment.invoice_payload.split('_')
-    subscription_type = payload_parts[1]  # test, month или year
+    subscription_type = payload_parts[1]  # test, pro_month, pro_year, orden_month, orden_year, month, year
     
     # Проверяем, был ли использован промокод со скидкой
     promo_id = None
@@ -897,14 +984,31 @@ async def successful_payment_handler(message: Message, state: FSMContext):
         days = Config.PREMIUM_TEST_DAYS
         type_name = "premium_test"
         period_text = "1 день (ТЕСТ)"
+    elif subscription_type == "pro_month":
+        days = Config.PRO_MONTH_DAYS
+        type_name = "pro_month"
+        period_text = "месяц (PRO)"
+    elif subscription_type == "pro_year":
+        days = Config.PRO_YEAR_DAYS
+        type_name = "pro_year"
+        period_text = "год (PRO)"
+    elif subscription_type == "orden_month":
+        days = Config.ORDEN_MONTH_DAYS
+        type_name = "orden_month"
+        period_text = "месяц (ORDEN)"
+    elif subscription_type == "orden_year":
+        days = Config.ORDEN_YEAR_DAYS
+        type_name = "orden_year"
+        period_text = "год (ORDEN)"
     elif subscription_type == "month":
-        days = Config.PREMIUM_MONTH_DAYS
-        type_name = "premium_month"
-        period_text = "месяц"
-    else:
-        days = Config.PREMIUM_YEAR_DAYS
-        type_name = "premium_year"
-        period_text = "год"
+        # Старая версия - перенаправляем на PRO
+        days = Config.PRO_MONTH_DAYS
+        type_name = "pro_month"
+        period_text = "месяц (PRO)"
+    else:  # year - старая версия
+        days = Config.PRO_YEAR_DAYS
+        type_name = "pro_year"
+        period_text = "год (PRO)"
     
     # Обновляем подписку
     end_date = await db.update_subscription(user_id, type_name, days)
@@ -924,23 +1028,44 @@ async def successful_payment_handler(message: Message, state: FSMContext):
         # Очищаем скидку из состояния
         await state.update_data(active_discount=None, promo_id=None)
     
+    # Определяем уровень подписки для сообщения
+    level = Config.SUBSCRIPTION_LEVELS.get(type_name, 'trial')
+    level_name = {'trial': 'Trial', 'pro': 'PRO', 'orden': 'ORDEN'}.get(level, 'Premium')
+    
     # Отправляем подтверждение
     text = f"""✅ *Оплата успешно выполнена!*
 
-🎉 Ваша премиум подписка активирована!
+🎉 Ваша подписка *{level_name}* активирована!
 
-📅 Тариф: *{period_text.capitalize()}*
+📅 Тариф: *{period_text}*
 💫 Действительна до: `{end_date.strftime('%d.%m.%Y %H:%M')}`
 💰 Оплачено: *{payment.total_amount} ⭐️*
 
-🎁 Теперь вам доступны все функции бота:
+"""
+    
+    if level == 'orden':
+        text += """👑 Теперь вам доступны ВСЕ функции бота:
 • Безлимитные расчеты даров
 • Полный анализ с ИИ
-• Персональные рекомендации
-• Расширенные трактовки
+• ⚗️ Алхимия даров
+• 📿 Сантры
+• 🔮 Анализ слов
+• Предсказания и рекомендации"""
+    elif level == 'pro':
+        text += """⭐ Теперь вам доступны функции PRO:
+• Безлимитные расчеты даров
+• Полный анализ с ИИ
+• Предсказания и рекомендации
+• Мантры
 
-Спасибо за поддержку! 🙏
-"""
+💡 Для доступа к алхимии, сантрам и анализу слов оформите подписку ORDEN"""
+    else:
+        text += """🎁 Теперь вам доступны базовые функции:
+• Безлимитные расчеты даров
+• Полный анализ с ИИ
+• Персональные рекомендации"""
+    
+    text += "\n\nСпасибо за поддержку! 🙏"
     
     await message.answer(text, parse_mode="Markdown", reply_markup=get_main_menu())
 
@@ -949,6 +1074,27 @@ async def successful_payment_handler(message: Message, state: FSMContext):
 @dp.message(F.text == "📿 Сантры")
 async def button_mantras(message: Message):
     """Кнопка работы с сантрами"""
+    user_id = message.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        text = """📿 *Работа с сантрами*
+
+❌ *Доступ ограничен*
+
+Сантры доступны только для подписки *ORDEN*.
+
+*ORDEN* включает:
+• ⚗️ Алхимия даров
+• 📿 Сантры
+• 🔮 Анализ слов
+• ✨ Все остальные функции
+
+Оформите подписку ORDEN для доступа к этой функции."""
+        await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        return
+    
     text = """📿 *Работа с сантрами*
 
 Сантра - это комбинация команд и даров, созданная для достижения определенных целей.
@@ -1006,6 +1152,19 @@ async def back_to_main_alchemy(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data.startswith("mantra_create_"))
 async def handle_mantra_create(callback: CallbackQuery, state: FSMContext):
     """Обработка создания сантры"""
+    user_id = callback.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        await callback.answer("❌ Сантры доступны только для подписки ORDEN", show_alert=True)
+        await callback.message.edit_text(
+            "❌ *Доступ ограничен*\n\nСантры доступны только для подписки *ORDEN*.\n\nОформите подписку ORDEN для доступа к этой функции.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        return
+    
     num_gifts = int(callback.data.split("_")[-1])  # 1 или 2
     
     # Создаем сантру сразу (без самовоспроизведения)
@@ -1047,6 +1206,19 @@ async def handle_mantra_create(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "mantra_create_request")
 async def handle_mantra_create_request(callback: CallbackQuery, state: FSMContext):
     """Создание сантры по запросу пользователя"""
+    user_id = callback.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        await callback.answer("❌ Сантры доступны только для подписки ORDEN", show_alert=True)
+        await callback.message.edit_text(
+            "❌ *Доступ ограничен*\n\nСантры доступны только для подписки *ORDEN*.\n\nОформите подписку ORDEN для доступа к этой функции.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        return
+    
     text = """📝 *Создание сантры по запросу*
 
 Опишите, для чего вам нужна сантра или задайте вопрос.
@@ -1140,6 +1312,18 @@ async def handle_mantra_request_create(callback: CallbackQuery, state: FSMContex
 @dp.callback_query(F.data == "mantra_create_by_theme")
 async def handle_create_mantra_by_theme(callback: CallbackQuery, state: FSMContext):
     """Начало создания сантры по запросу - показ тем"""
+    user_id = callback.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        await callback.answer("❌ Создание сантр по запросу доступно только для подписки ORDEN", show_alert=True)
+        await callback.message.edit_text(
+            "❌ *Доступ ограничен*\n\nСоздание сантр по запросу доступно только для подписки *ORDEN*.\n\nОформите подписку ORDEN для доступа к этой функции.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        return
     # Все доступные темы
     all_themes = [
         "здоровье", "семья", "деньги", "бизнес", "отношения",
@@ -1201,26 +1385,26 @@ async def create_and_analyze_mantra_by_theme(message: Message, state: FSMContext
     """Создание сантры по запросу и её анализ"""
     user_id = message.from_user.id if callback is None else callback.from_user.id
     
-    # Проверяем подписку
+    # Проверяем подписку и уровень доступа
     subscription = await check_subscription_with_admin(user_id)
-    if not subscription['active']:
-        text = """⚠️ *Подписка не активна*
+    if not check_feature_access(subscription, 'orden'):
+        text = """❌ *Доступ ограничен*
 
-Для создания сантры по запросу необходима активная подписка.
+Создание сантр по запросу доступно только для подписки *ORDEN*.
 
-⭐️ *Премиум подписка:*
-📅 Месяц - {month_price} ⭐️
-📆 Год - {year_price} ⭐️
+👑 *ORDEN подписка включает:*
+• ⚗️ Алхимия даров
+• 📿 Сантры (включая создание по запросу)
+• 🔮 Анализ слов
+• ✨ Все остальные функции
 
-🎁 Что вы получите:
-• Безлимитные расчеты даров
-• Создание сантр по запросу с ИИ
-• Полный анализ
-• Персональные рекомендации
+*Тарифы ORDEN:*
+📅 Месяц - {orden_month_price} ⭐️
+📆 Год - {orden_year_price} ⭐️
 
 _Нажмите кнопку ниже для оформления подписки_""".format(
-            month_price=Config.PREMIUM_MONTH_PRICE,
-            year_price=Config.PREMIUM_YEAR_PRICE
+            orden_month_price=Config.ORDEN_MONTH_PRICE,
+            orden_year_price=Config.ORDEN_YEAR_PRICE
         )
         
         if callback:
@@ -1338,6 +1522,19 @@ async def handle_analyze_mantra_by_theme(callback: CallbackQuery, state: FSMCont
 @dp.callback_query(F.data == "mantra_analyze")
 async def handle_mantra_analyze(callback: CallbackQuery, state: FSMContext):
     """Начало анализа сантры"""
+    user_id = callback.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        await callback.answer("❌ Анализ сантр доступен только для подписки ORDEN", show_alert=True)
+        await callback.message.edit_text(
+            "❌ *Доступ ограничен*\n\nАнализ сантр доступен только для подписки *ORDEN*.\n\nОформите подписку ORDEN для доступа к этой функции.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        return
+    
     text = """🔍 *Анализ сантры*
 
 Отправьте сантру для анализа.
@@ -1356,6 +1553,13 @@ async def handle_mantra_analyze(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "mantra_analyze_created")
 async def handle_mantra_analyze_created(callback: CallbackQuery, state: FSMContext):
     """Анализ созданной сантры через ИИ"""
+    user_id = callback.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        await callback.answer("❌ Анализ сантр доступен только для подписки ORDEN", show_alert=True)
+        return
     data = await state.get_data()
     mantra_text = data.get("created_mantra", "")
     
@@ -1390,6 +1594,18 @@ async def handle_mantra_analyze_created(callback: CallbackQuery, state: FSMConte
 @dp.message(UserStates.waiting_for_mantra_to_analyze)
 async def process_mantra_to_analyze(message: Message, state: FSMContext):
     """Обработка сантры для анализа"""
+    user_id = message.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        await message.answer(
+            "❌ *Доступ ограничен*\n\nАнализ сантр доступен только для подписки *ORDEN*.\n\nОформите подписку ORDEN для доступа к этой функции.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        await state.clear()
+        return
     mantra_text = message.text.strip()
     
     if not mantra_text:
@@ -1427,6 +1643,27 @@ async def process_mantra_to_analyze(message: Message, state: FSMContext):
 @dp.message(F.text == "🔮 Анализ слов")
 async def button_alphabet(message: Message):
     """Кнопка анализа слов через алфавит"""
+    user_id = message.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        text = """🔮 *Анализ слов через алфавит*
+
+❌ *Доступ ограничен*
+
+Анализ слов доступен только для подписки *ORDEN*.
+
+*ORDEN* включает:
+• ⚗️ Алхимия даров
+• 📿 Сантры
+• 🔮 Анализ слов
+• ✨ Все остальные функции
+
+Оформите подписку ORDEN для доступа к этой функции."""
+        await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        return
+    
     text = """🔮 *Анализ слов через алфавит*
 
 Каждая буква несет в себе особую энергию и значение. Я могу проанализировать любое слово, имя или фразу, раскрыв их глубинный смысл.
@@ -1882,6 +2119,27 @@ async def process_prediction_day_calculation(message: Message, state: FSMContext
 @dp.message(F.text == "⚗️ Алхимия даров")
 async def button_alchemy(message: Message, state: FSMContext):
     """Кнопка алхимии даров"""
+    user_id = message.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        text = """⚗️ *Алхимия даров*
+
+❌ *Доступ ограничен*
+
+Алхимия даров доступна только для подписки *ORDEN*.
+
+*ORDEN* включает:
+• ⚗️ Алхимия даров
+• 📿 Сантры
+• 🔮 Анализ слов
+• ✨ Все остальные функции
+
+Оформите подписку ORDEN для доступа к этой функции."""
+        await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
+        return
+    
     text = """⚗️ *Алхимия даров*
 
 Расчет по системе Ма-Жи-Кун с использованием полей от 1 до 9.
@@ -2107,6 +2365,19 @@ _Нажмите кнопку ниже для оформления подписк
 @dp.callback_query(F.data == "alphabet_analyze")
 async def handle_alphabet_analyze_start(callback: CallbackQuery, state: FSMContext):
     """Начало анализа слова"""
+    user_id = callback.from_user.id
+    subscription = await check_subscription_with_admin(user_id)
+    
+    # Проверка доступа - требуется уровень ORDEN
+    if not check_feature_access(subscription, 'orden'):
+        await callback.answer("❌ Анализ слов доступен только для подписки ORDEN", show_alert=True)
+        await callback.message.edit_text(
+            "❌ *Доступ ограничен*\n\nАнализ слов доступен только для подписки *ORDEN*.\n\nОформите подписку ORDEN для доступа к этой функции.",
+            reply_markup=get_subscription_menu(),
+            parse_mode="Markdown"
+        )
+        return
+    
     text = """✍️ *Анализ слова или фразы*
 
 Отправьте мне слово, которое хотите проанализировать.
@@ -2268,16 +2539,35 @@ async def process_promocode(message: Message, state: FSMContext):
     if promo['type'] == 'subscription':
         # Выдаем подписку
         days = promo['subscription_days']
-        end_date = await db.update_subscription(user_id, 'premium_promo', days)
+        sub_type = promo.get('subscription_type', 'pro')  # По умолчанию pro
+        
+        # Определяем тип подписки для сохранения
+        if sub_type == 'orden':
+            # Определяем длительность для ORDEN
+            if days >= 365:
+                type_name = 'orden_year'
+            else:
+                type_name = 'orden_month'
+        else:
+            # Определяем длительность для PRO
+            if days >= 365:
+                type_name = 'pro_year'
+            else:
+                type_name = 'pro_month'
+        
+        end_date = await db.update_subscription(user_id, type_name, days)
         
         # Регистрируем использование
         await db.use_promocode(user_id, promo['id'])
         
+        sub_type_name = "ORDEN" if sub_type == 'orden' else "PRO"
+        access_text = "полный доступ ко всем функциям, включая алхимию, сантры и анализ слов" if sub_type == 'orden' else "доступ к базовым функциям (без алхимии, сантр и анализа слов)"
+        
         await message.answer(
             f"✅ *Промокод активирован!*\n\n"
-            f"🎉 Вам выдана подписка на *{days} дней*!\n"
+            f"🎉 Вам выдана подписка *{sub_type_name}* на *{days} дней*!\n"
             f"💫 Действительна до: `{end_date.strftime('%d.%m.%Y %H:%M')}`\n\n"
-            f"Теперь у вас безлимитный доступ ко всем функциям бота!",
+            f"Теперь у вас {access_text}!",
             reply_markup=get_main_menu(),
             parse_mode="Markdown"
         )
@@ -2350,18 +2640,47 @@ async def admin_promo_type_selected(callback: CallbackQuery, state: FSMContext):
     await state.update_data(promo_type=promo_type)
     
     if promo_type == "subscription":
+        keyboard = [
+            [InlineKeyboardButton(text="⭐ PRO", callback_data="promo_sub_type_pro")],
+            [InlineKeyboardButton(text="👑 ORDEN", callback_data="promo_sub_type_orden")],
+            [InlineKeyboardButton(text="« Назад", callback_data="admin_create_promo")]
+        ]
         await callback.message.edit_text(
             "📝 *Создание промокода: Подписка*\n\n"
-            "Введите количество дней подписки (например: 30):",
+            "Выберите тип подписки:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
             parse_mode="Markdown"
         )
+        await state.set_state(UserStates.waiting_for_promo_sub_type)
+        await callback.answer()
+        return
     else:
         await callback.message.edit_text(
             "📝 *Создание промокода: Скидка*\n\n"
             "Введите процент скидки (например: 20):",
             parse_mode="Markdown"
         )
+        await state.set_state(UserStates.waiting_for_promo_value)
     
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("promo_sub_type_"))
+async def admin_promo_sub_type_selected(callback: CallbackQuery, state: FSMContext):
+    """Выбор типа подписки для промокода"""
+    user_id = callback.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    sub_type = callback.data.replace("promo_sub_type_", "")  # pro или orden
+    await state.update_data(promo_sub_type=sub_type)
+    
+    await callback.message.edit_text(
+        f"📝 *Создание промокода: Подписка {sub_type.upper()}*\n\n"
+        "Введите количество дней подписки (например: 30):",
+        parse_mode="Markdown"
+    )
     await state.set_state(UserStates.waiting_for_promo_value)
     await callback.answer()
 
@@ -2428,14 +2747,17 @@ async def admin_promo_max_uses_entered(message: Message, state: FSMContext):
         
         # Создаем промокод
         if promo_type == 'subscription':
+            sub_type = data.get('promo_sub_type', 'pro')  # По умолчанию pro
             await db.create_promocode(
                 code=code,
                 promo_type='subscription',
                 created_by=user_id,
                 subscription_days=value,
+                subscription_type=sub_type,
                 max_uses=max_uses if max_uses > 0 else None
             )
-            type_desc = f"🎁 Подписка на {value} дней"
+            sub_type_name = "PRO" if sub_type == 'pro' else "ORDEN"
+            type_desc = f"🎁 Подписка {sub_type_name} на {value} дней"
         else:
             await db.create_promocode(
                 code=code,
@@ -2489,7 +2811,9 @@ async def admin_list_promos(callback: CallbackQuery):
         status = "✅" if promo['is_active'] else "❌"
         
         if promo['type'] == 'subscription':
-            type_desc = f"🎁 {promo['subscription_days']}д"
+            sub_type = promo.get('subscription_type', 'pro')
+            sub_type_name = "PRO" if sub_type == 'pro' else "ORDEN"
+            type_desc = f"🎁 {sub_type_name} {promo['subscription_days']}д"
         else:
             type_desc = f"💰 {promo['discount_percent']}%"
         
@@ -2633,12 +2957,50 @@ def generate_promocode(length: int = 12) -> str:
 
 async def check_subscription_with_admin(user_id: int) -> dict:
     """Проверка подписки с учетом админских прав"""
-    # Админы имеют безлимитный доступ
+    # Админы имеют безлимитный доступ (уровень ORDEN)
     if await db.is_admin(user_id):
-        return {"active": True, "type": "admin", "end_date": None}
+        return {
+            "active": True, 
+            "type": "admin", 
+            "level": "orden",
+            "end_date": None
+        }
     
     # Обычная проверка подписки
-    return await db.check_subscription(user_id)
+    subscription = await db.check_subscription(user_id)
+    
+    # Определяем уровень доступа
+    if subscription.get('active'):
+        sub_type = subscription.get('type', '')
+        level = Config.SUBSCRIPTION_LEVELS.get(sub_type, 'trial')
+        subscription['level'] = level
+    else:
+        subscription['level'] = 'trial'
+    
+    return subscription
+
+def check_feature_access(subscription: dict, required_level: str) -> bool:
+    """
+    Проверка доступа к функции по уровню подписки
+    
+    Args:
+        subscription: Результат check_subscription_with_admin
+        required_level: Требуемый уровень ('trial', 'pro', 'orden')
+    
+    Returns:
+        bool: True если доступ разрешен
+    """
+    if not subscription.get('active'):
+        return False
+    
+    level = subscription.get('level', 'trial')
+    
+    # Иерархия уровней: trial < pro < orden
+    level_hierarchy = {'trial': 0, 'pro': 1, 'orden': 2}
+    user_level = level_hierarchy.get(level, 0)
+    required = level_hierarchy.get(required_level, 0)
+    
+    return user_level >= required
 
 async def init_bot_components():
     """Инициализация компонентов бота (база данных, данные и т.д.)"""

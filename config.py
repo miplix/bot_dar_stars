@@ -59,13 +59,31 @@ class Config:
     
     # Цены подписок в звездах
     PREMIUM_TEST_PRICE = 15      # Тестовая подписка на 1 день (для тестирования)
-    PREMIUM_MONTH_PRICE = 249   # Подписка на месяц
-    PREMIUM_YEAR_PRICE = 2499   # Подписка на год
+    
+    # PRO подписка (базовый уровень)
+    PRO_MONTH_PRICE = 249   # PRO подписка на месяц
+    PRO_YEAR_PRICE = 2499   # PRO подписка на год
+    
+    # ORDEN подписка (полный доступ)
+    ORDEN_MONTH_PRICE = 499   # ORDEN подписка на месяц
+    ORDEN_YEAR_PRICE = 4999   # ORDEN подписка на год
     
     # Длительность подписок в днях
     PREMIUM_TEST_DAYS = 1       # Тестовая подписка
-    PREMIUM_MONTH_DAYS = 30
-    PREMIUM_YEAR_DAYS = 365
+    PRO_MONTH_DAYS = 30
+    PRO_YEAR_DAYS = 365
+    ORDEN_MONTH_DAYS = 30
+    ORDEN_YEAR_DAYS = 365
+    
+    # Уровни доступа подписок
+    SUBSCRIPTION_LEVELS = {
+        'trial': 'trial',           # Trial - базовый доступ
+        'premium_test': 'trial',     # Тестовая - базовый доступ
+        'pro_month': 'pro',          # PRO месяц - без алхимии, сантр, анализа слов
+        'pro_year': 'pro',           # PRO год - без алхимии, сантр, анализа слов
+        'orden_month': 'orden',      # ORDEN месяц - полный доступ
+        'orden_year': 'orden'        # ORDEN год - полный доступ
+    }
     
     @classmethod
     def validate(cls):

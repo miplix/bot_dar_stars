@@ -105,6 +105,7 @@ class Database:
                     type TEXT NOT NULL,
                     discount_percent INTEGER,
                     subscription_days INTEGER,
+                    subscription_type TEXT,
                     max_uses INTEGER,
                     current_uses INTEGER DEFAULT 0,
                     created_date TEXT,
@@ -113,6 +114,12 @@ class Database:
                     FOREIGN KEY (created_by) REFERENCES users (user_id)
                 )
             """)
+            
+            # Миграция: добавление колонки subscription_type, если её нет
+            cursor = await db.execute("PRAGMA table_info(promocodes)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if 'subscription_type' not in columns:
+                await db.execute("ALTER TABLE promocodes ADD COLUMN subscription_type TEXT")
             
             # Таблица использований промокодов
             await db.execute("""
@@ -425,7 +432,7 @@ class Database:
     
     async def create_promocode(self, code: str, promo_type: str, created_by: int,
                                discount_percent: int = None, subscription_days: int = None,
-                               max_uses: int = None):
+                               subscription_type: str = None, max_uses: int = None):
         """Создание промокода
         
         Args:
@@ -434,15 +441,16 @@ class Database:
             created_by: ID админа, создавшего промокод
             discount_percent: Процент скидки (для discount)
             subscription_days: Дни подписки (для subscription)
+            subscription_type: Тип подписки ('pro' или 'orden') для subscription промокодов
             max_uses: Максимальное количество использований (None = безлимит)
         """
         async with aiosqlite.connect(self.db_path) as db:
             created_date = datetime.now().isoformat()
             await db.execute("""
                 INSERT INTO promocodes 
-                (code, type, discount_percent, subscription_days, max_uses, created_date, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (code, promo_type, discount_percent, subscription_days, max_uses, created_date, created_by))
+                (code, type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (code, promo_type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by))
             await db.commit()
     
     async def get_promocode(self, code: str):

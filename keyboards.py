@@ -31,20 +31,24 @@ def get_subscription_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def get_premium_options_menu() -> InlineKeyboardMarkup:
-    """Меню выбора тарифа премиум подписки"""
+    """Меню выбора тарифа подписки"""
     keyboard = [
         [InlineKeyboardButton(
             text=f"🧪 ТЕСТ (1 день) - {Config.PREMIUM_TEST_PRICE} ⭐️",
             callback_data="buy_premium_test"
         )],
-        [InlineKeyboardButton(
-            text=f"📅 Месяц - {Config.PREMIUM_MONTH_PRICE} ⭐️",
-            callback_data="buy_premium_month"
-        )],
-        [InlineKeyboardButton(
-            text=f"📆 Год - {Config.PREMIUM_YEAR_PRICE} ⭐️",
-            callback_data="buy_premium_year"
-        )],
+        [
+            InlineKeyboardButton(
+                text=f"⭐ PRO Месяц - {Config.PRO_MONTH_PRICE} ⭐️",
+                callback_data="buy_pro_month"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"⭐ PRO Год - {Config.PRO_YEAR_PRICE} ⭐️",
+                callback_data="buy_pro_year"
+            )
+        ],
         [InlineKeyboardButton(text="« Назад", callback_data="back_to_subscription")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
