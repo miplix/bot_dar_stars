@@ -8,6 +8,7 @@ import logging
 import sys
 import os
 import types
+from http.server import BaseHTTPRequestHandler
 
 # Добавляем корневую директорию в путь
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -56,8 +57,8 @@ except Exception as e:
     bot = None
     init_bot_components = None
 
-# Определяем handler ПОСЛЕ всех импортов
-def handler(req):
+# Определяем функцию handler
+def _handler_function(req):
     """
     Обработчик для Vercel serverless функции
     
@@ -172,8 +173,42 @@ def handler(req):
             'body': json.dumps({'ok': False, 'error': str(e)[:200]})
         }
 
-# Убеждаемся, что handler является функцией (для Vercel)
-# Это нужно, чтобы Vercel правильно определял handler
-if not isinstance(handler, types.FunctionType):
-    logger.error(f"Handler is not a function! Type: {type(handler)}")
-    raise TypeError(f"Handler must be a function, got {type(handler)}")
+# Определяем класс handler для Vercel (он ожидает класс, наследующий BaseHTTPRequestHandler)
+class handler(BaseHTTPRequestHandler):
+    """Класс handler для Vercel Python runtime"""
+    
+    def do_GET(self):
+        """Обработка GET запроса"""
+        result = _handler_function({
+            'method': 'GET',
+            'body': None
+        })
+        self.send_response(result['statusCode'])
+        for key, value in result['headers'].items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(result['body'].encode('utf-8'))
+    
+    def do_POST(self):
+        """Обработка POST запроса"""
+        # Читаем тело запроса
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b''
+        
+        # Создаем объект запроса
+        req_obj = {
+            'method': 'POST',
+            'body': body.decode('utf-8') if body else None,
+            'headers': dict(self.headers)
+        }
+        
+        result = _handler_function(req_obj)
+        self.send_response(result['statusCode'])
+        for key, value in result['headers'].items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(result['body'].encode('utf-8'))
+    
+    def log_message(self, format, *args):
+        """Переопределяем логирование"""
+        logger.info(f"{self.address_string()} - {format % args}")
