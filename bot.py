@@ -2539,7 +2539,7 @@ async def process_promocode(message: Message, state: FSMContext):
     if promo['type'] == 'subscription':
         # Выдаем подписку
         days = promo['subscription_days']
-        sub_type = promo.get('subscription_type', 'pro')  # По умолчанию pro
+        sub_type = promo['subscription_type'] if promo['subscription_type'] is not None else 'pro'  # По умолчанию pro
         
         # Определяем тип подписки для сохранения
         if sub_type == 'orden':
@@ -2807,11 +2807,13 @@ async def admin_list_promos(callback: CallbackQuery):
     
     text = "📋 *Список промокодов*\n\n"
     
+    keyboard = []
+    
     for promo in promos[:20]:  # Показываем первые 20
         status = "✅" if promo['is_active'] else "❌"
         
         if promo['type'] == 'subscription':
-            sub_type = promo.get('subscription_type', 'pro')
+            sub_type = promo['subscription_type'] if promo['subscription_type'] is not None else 'pro'
             sub_type_name = "PRO" if sub_type == 'pro' else "ORDEN"
             type_desc = f"🎁 {sub_type_name} {promo['subscription_days']}д"
         else:
@@ -2824,12 +2826,62 @@ async def admin_list_promos(callback: CallbackQuery):
             uses += "/∞"
         
         text += f"{status} `{promo['code']}` - {type_desc} ({uses})\n"
+        
+        # Добавляем кнопку удаления для каждого промокода
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"🗑️ Удалить {promo['code']}",
+                callback_data=f"admin_delete_promo_{promo['id']}"
+            )
+        ])
     
     if len(promos) > 20:
         text += f"\n_... и еще {len(promos) - 20} кодов_"
     
-    await callback.message.edit_text(text, reply_markup=get_admin_menu(), parse_mode="Markdown")
+    # Добавляем кнопку "Назад"
+    keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="admin_cancel")])
+    
+    await callback.message.edit_text(
+        text, 
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard), 
+        parse_mode="Markdown"
+    )
     await callback.answer()
+
+@dp.callback_query(F.data.startswith("admin_delete_promo_"))
+async def admin_delete_promo(callback: CallbackQuery):
+    """Удаление промокода"""
+    user_id = callback.from_user.id
+    
+    if not await db.is_admin(user_id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    # Извлекаем ID промокода из callback_data
+    promo_id = int(callback.data.replace("admin_delete_promo_", ""))
+    
+    # Получаем информацию о промокоде
+    promos = await db.get_all_promocodes()
+    promo = None
+    for p in promos:
+        if p['id'] == promo_id:
+            promo = p
+            break
+    
+    if not promo:
+        await callback.answer("❌ Промокод не найден", show_alert=True)
+        return
+    
+    # Удаляем промокод
+    try:
+        await db.delete_promocode(promo_id)
+        await callback.answer(f"✅ Промокод {promo['code']} удален", show_alert=True)
+        
+        # Обновляем список промокодов
+        await admin_list_promos(callback)
+    except Exception as e:
+        logger.error(f"Ошибка при удалении промокода: {e}", exc_info=True)
+        await callback.answer("❌ Ошибка при удалении промокода", show_alert=True)
 
 @dp.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):

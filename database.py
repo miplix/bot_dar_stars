@@ -499,6 +499,19 @@ class Database:
             )
             await db.commit()
     
+    async def delete_promocode(self, promo_id: int):
+        """Удалить промокод из базы данных"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Сначала удаляем все использования промокода
+            await db.execute(
+                "DELETE FROM promocode_usage WHERE promocode_id = ?", (promo_id,)
+            )
+            # Затем удаляем сам промокод
+            await db.execute(
+                "DELETE FROM promocodes WHERE id = ?", (promo_id,)
+            )
+            await db.commit()
+    
     async def get_all_promocodes(self):
         """Получить список всех промокодов"""
         async with aiosqlite.connect(self.db_path) as db:
