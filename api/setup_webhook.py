@@ -17,6 +17,9 @@ def handler(req):
     Можно вызвать вручную или через Vercel deployment webhook
     """
     try:
+        # Получаем метод запроса
+        method = getattr(req, 'method', None) or req.get('method', 'GET')
+        
         # Получаем BOT_TOKEN из переменных окружения
         bot_token = os.getenv('BOT_TOKEN')
         if not bot_token:
@@ -33,9 +36,14 @@ def handler(req):
         # Vercel предоставляет VERCEL_URL в переменных окружения
         vercel_url = os.getenv('VERCEL_URL')
         if not vercel_url:
-            # Если VERCEL_URL нет, пытаемся получить из запроса
-            if hasattr(req, 'headers') and 'host' in req.headers:
-                vercel_url = f"https://{req.headers['host']}"
+            # Пытаемся получить из заголовков запроса
+            headers = getattr(req, 'headers', None) or req.get('headers', {})
+            if isinstance(headers, dict) and 'host' in headers:
+                vercel_url = f"https://{headers['host']}"
+            elif hasattr(req, 'headers') and hasattr(req.headers, 'get'):
+                host = req.headers.get('host')
+                if host:
+                    vercel_url = f"https://{host}"
             else:
                 # Используем фиксированный URL из запроса или из переменной
                 vercel_url = os.getenv('WEBHOOK_BASE_URL', 'https://bot-dar-stars-nf4r.vercel.app')

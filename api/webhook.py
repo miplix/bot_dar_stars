@@ -84,7 +84,8 @@ def handler(req):
             }
         
         # Обработка GET запроса (для проверки работоспособности)
-        if req.method == 'GET':
+        method = getattr(req, 'method', None) or req.get('method', 'GET')
+        if method == 'GET':
             return {
                 'statusCode': 200,
                 'headers': {'Content-Type': 'application/json'},
@@ -95,7 +96,8 @@ def handler(req):
             }
         
         # Обработка POST запроса от Telegram
-        if req.method != 'POST':
+        method = getattr(req, 'method', None) or req.get('method', 'GET')
+        if method != 'POST':
             return {
                 'statusCode': 405,
                 'headers': {'Content-Type': 'application/json'},
@@ -103,7 +105,7 @@ def handler(req):
             }
         
         # Получаем тело запроса
-        body = req.body
+        body = getattr(req, 'body', None) or req.get('body', None)
         if body is None:
             return {
                 'statusCode': 400,
