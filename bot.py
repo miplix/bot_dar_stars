@@ -197,8 +197,8 @@ async def cmd_complete_calculate(message: Message, state: FSMContext):
 
 _Нажмите кнопку ниже для оформления подписки_
 """.format(
-            month_price=Config.PREMIUM_MONTH_PRICE,
-            year_price=Config.PREMIUM_YEAR_PRICE
+            month_price=Config.PRO_MONTH_PRICE,
+            year_price=Config.PRO_YEAR_PRICE
         )
         await message.answer(
             text,
@@ -257,8 +257,8 @@ async def process_birth_date(message: Message, state: FSMContext):
 
 _Нажмите кнопку ниже для оформления подписки_
 """.format(
-            month_price=Config.PREMIUM_MONTH_PRICE,
-            year_price=Config.PREMIUM_YEAR_PRICE
+            month_price=Config.PRO_MONTH_PRICE,
+            year_price=Config.PRO_YEAR_PRICE
         )
         await message.answer(
             text,
@@ -335,7 +335,7 @@ async def cmd_subscription(message: Message):
 
 Для продолжения работы с ботом необходимо оформить подписку.
 
-💫 *Премиум подписка* - {Config.PREMIUM_PRICE_STARS} звезд
+💫 *Премиум подписка* - от {Config.PRO_MONTH_PRICE} звезд
 • Безлимитные расчеты даров
 • Полный анализ с помощью ИИ
 • Доступ к гаданиям
@@ -695,8 +695,8 @@ async def show_premium_options(callback: CallbackQuery):
 💡 _После оплаты подписка активируется автоматически_
 """.format(
         test_price=Config.PREMIUM_TEST_PRICE,
-        month_price=Config.PREMIUM_MONTH_PRICE,
-        year_price=Config.PREMIUM_YEAR_PRICE
+        month_price=Config.PRO_MONTH_PRICE,
+        year_price=Config.PRO_YEAR_PRICE
     )
     
     await callback.message.edit_text(
@@ -1708,8 +1708,8 @@ async def button_day_gift(message: Message):
 • Персональные рекомендации
 
 _Нажмите кнопку ниже для оформления подписки_""".format(
-            month_price=Config.PREMIUM_MONTH_PRICE,
-            year_price=Config.PREMIUM_YEAR_PRICE
+            month_price=Config.PRO_MONTH_PRICE,
+            year_price=Config.PRO_YEAR_PRICE
         )
         await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
         return
@@ -1781,8 +1781,8 @@ async def button_predictions(message: Message):
 • Персональные рекомендации
 
 _Нажмите кнопку ниже для оформления подписки_""".format(
-            month_price=Config.PREMIUM_MONTH_PRICE,
-            year_price=Config.PREMIUM_YEAR_PRICE
+            month_price=Config.PRO_MONTH_PRICE,
+            year_price=Config.PRO_YEAR_PRICE
         )
         await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
         return
@@ -2187,8 +2187,8 @@ async def process_alchemy_numbers(message: Message, state: FSMContext):
 • Персональные рекомендации
 
 _Нажмите кнопку ниже для оформления подписки_""".format(
-            month_price=Config.PREMIUM_MONTH_PRICE,
-            year_price=Config.PREMIUM_YEAR_PRICE
+            month_price=Config.PRO_MONTH_PRICE,
+            year_price=Config.PRO_YEAR_PRICE
         )
         await message.answer(text, reply_markup=get_subscription_menu(), parse_mode="Markdown")
         await state.clear()
