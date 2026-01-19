@@ -132,29 +132,26 @@ def _handler_function(req):
         
         logger.info(f"Получено обновление: {update_data.get('update_id')}")
         
-        # Создаем новый event loop для асинхронной обработки
-        # В Vercel каждая функция работает изолированно
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        # Обрабатываем обновление
-        try:
+        # Асинхронная функция для обработки обновления
+        async def process_update():
+            """Обрабатывает обновление в асинхронном контексте"""
             # Инициализируем компоненты если нужно
-            loop.run_until_complete(ensure_initialized())
+            await ensure_initialized()
             
             # Преобразуем словарь в объект Update
             update = Update(**update_data)
             
             # Обрабатываем обновление
-            loop.run_until_complete(dp.feed_update(bot, update))
+            await dp.feed_update(bot, update)
             
             logger.info(f"Обновление {update_data.get('update_id')} обработано")
+        
+        # Обрабатываем обновление
+        try:
+            # Используем asyncio.run() для создания нового event loop
+            # Это необходимо для корректной работы aiohttp таймаутов в serverless окружении
+            # В Vercel каждая функция выполняется изолированно, поэтому новый loop безопасен
+            asyncio.run(process_update())
             
         except Exception as e:
             logger.error(f"Ошибка при обработке обновления: {e}", exc_info=True)
