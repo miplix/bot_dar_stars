@@ -9,6 +9,7 @@ import sys
 import os
 import types
 from http.server import BaseHTTPRequestHandler
+from aiogram.types import Update
 
 # Добавляем корневую директорию в путь
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -147,8 +148,11 @@ def _handler_function(req):
             # Инициализируем компоненты если нужно
             loop.run_until_complete(ensure_initialized())
             
+            # Преобразуем словарь в объект Update
+            update = Update(**update_data)
+            
             # Обрабатываем обновление
-            loop.run_until_complete(dp.feed_update(bot, update_data))
+            loop.run_until_complete(dp.feed_update(bot, update))
             
             logger.info(f"Обновление {update_data.get('update_id')} обработано")
             
