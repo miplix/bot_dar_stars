@@ -5,6 +5,7 @@
 import aiosqlite
 import asyncpg
 import os
+import asyncio
 from datetime import datetime, timedelta
 from config import Config
 from urllib.parse import urlparse
@@ -20,6 +21,10 @@ class Database:
             self.db_path = db_path  # Может быть None для PostgreSQL
         else:
             self.db_path = db_path or getattr(Config, 'DATABASE_PATH', 'data/bot_database.db')
+            # Создаем директорию для базы данных, если её нет (только для SQLite)
+            db_dir = os.path.dirname(self.db_path)
+            if db_dir:  # Если путь содержит директорию (не корневой файл)
+                os.makedirs(db_dir, exist_ok=True)
         self.pool = None  # Connection pool для PostgreSQL
         
     async def _get_pg_connection(self):
