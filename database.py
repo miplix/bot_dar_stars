@@ -506,35 +506,64 @@ class Database:
     
     async def get_subscription_stats(self):
         """Получение статистики по подпискам"""
-        async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("""
-                SELECT 
-                    subscription_type,
-                    COUNT(*) as count,
-                    COUNT(CASE WHEN datetime(subscription_end_date) > datetime('now') THEN 1 END) as active_count
-                FROM users
-                GROUP BY subscription_type
-            """)
-            return await cursor.fetchall()
+        if self.use_postgresql:
+            async with self._pg_connection_ctx() as conn:
+                rows = await conn.fetch("""
+                    SELECT 
+                        subscription_type,
+                        COUNT(*) as count,
+                        COUNT(CASE WHEN subscription_end_date > NOW() THEN 1 END) as active_count
+                    FROM telegram_users
+                    GROUP BY subscription_type
+                """)
+                return rows
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT 
+                        subscription_type,
+                        COUNT(*) as count,
+                        COUNT(CASE WHEN datetime(subscription_end_date) > datetime('now') THEN 1 END) as active_count
+                    FROM users
+                    GROUP BY subscription_type
+                """)
+                return await cursor.fetchall()
     
     async def get_all_users_with_subscriptions(self, limit: int = 50):
         """Получение списка пользователей с подписками"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("""
-                SELECT 
-                    user_id,
-                    username,
-                    first_name,
-                    registration_date,
-                    subscription_type,
-                    subscription_end_date,
-                    is_admin
-                FROM users
-                ORDER BY registration_date DESC
-                LIMIT ?
-            """, (limit,))
-            return await cursor.fetchall()
+        if self.use_postgresql:
+            async with self._pg_connection_ctx() as conn:
+                rows = await conn.fetch("""
+                    SELECT 
+                        user_id,
+                        username,
+                        first_name,
+                        registration_date,
+                        subscription_type,
+                        subscription_end_date,
+                        is_admin
+                    FROM telegram_users
+                    ORDER BY registration_date DESC
+                    LIMIT $1
+                """, limit)
+                return rows
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute("""
+                    SELECT 
+                        user_id,
+                        username,
+                        first_name,
+                        registration_date,
+                        subscription_type,
+                        subscription_end_date,
+                        is_admin
+                    FROM users
+                    ORDER BY registration_date DESC
+                    LIMIT ?
+                """, (limit,))
+                return await cursor.fetchall()
     
     async def init_alphabet_data(self):
         """Инициализация данных алфавита"""
