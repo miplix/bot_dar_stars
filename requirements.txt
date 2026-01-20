@@ -20,4 +20,3 @@ pydantic==2.9.2
 
 # HTTP requests (для setup_webhook.py)
 requests==2.31.0
-
