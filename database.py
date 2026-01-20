@@ -525,29 +525,60 @@ class Database:
             ("Я", "ЙА", "состоит из Й + А. Если И оплодотворить райдой + Оду (точка судьбы, выбор)")
         ]
         
-        async with aiosqlite.connect(self.db_path) as db:
-            for letter, name, description in alphabet_data:
-                await db.execute("""
-                    INSERT OR IGNORE INTO alphabet (letter, name, description)
-                    VALUES (?, ?, ?)
-                """, (letter, name, description))
-            await db.commit()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                async with conn.transaction():
+                    for letter, name, description in alphabet_data:
+                        await conn.execute("""
+                            INSERT INTO telegram_alphabet (letter, name, description)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (letter) DO NOTHING
+                        """, letter, name, description)
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                for letter, name, description in alphabet_data:
+                    await db.execute("""
+                        INSERT OR IGNORE INTO alphabet (letter, name, description)
+                        VALUES (?, ?, ?)
+                    """, (letter, name, description))
+                await db.commit()
     
     async def get_letter_meaning(self, letter: str):
         """Получение значения буквы"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM alphabet WHERE letter = ?", (letter.upper(),)
-            )
-            return await cursor.fetchone()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                row = await conn.fetchrow(
+                    "SELECT * FROM telegram_alphabet WHERE letter = $1", letter.upper()
+                )
+                return row
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT * FROM alphabet WHERE letter = ?", (letter.upper(),)
+                )
+                return await cursor.fetchone()
     
     async def get_all_alphabet(self):
         """Получение всего алфавита"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM alphabet ORDER BY id")
-            return await cursor.fetchall()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                rows = await conn.fetch("SELECT * FROM telegram_alphabet ORDER BY id")
+                return rows
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute("SELECT * FROM alphabet ORDER BY id")
+                return await cursor.fetchall()
     
     # ========== АДМИНИСТРАТИВНЫЕ ФУНКЦИИ ==========
     
@@ -897,13 +928,26 @@ class Database:
             ("КУН", "Процесс творения и перехода между МА и ЖИ. Активный акт созидания в точке «здесь и сейчас». Осознанные действия и наблюдение. Находится посередине. Энергия: подвижная, творящая реальность.")
         ]
         
-        async with aiosqlite.connect(self.db_path) as db:
-            for name, description in positions_data:
-                await db.execute("""
-                    INSERT OR REPLACE INTO ma_zhi_kun_positions (name, description)
-                    VALUES (?, ?)
-                """, (name, description))
-            await db.commit()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                async with conn.transaction():
+                    for name, description in positions_data:
+                        await conn.execute("""
+                            INSERT INTO telegram_ma_zhi_kun_positions (name, description)
+                            VALUES ($1, $2)
+                            ON CONFLICT (name) DO UPDATE SET description = $2
+                        """, name, description)
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                for name, description in positions_data:
+                    await db.execute("""
+                        INSERT OR REPLACE INTO ma_zhi_kun_positions (name, description)
+                        VALUES (?, ?)
+                    """, (name, description))
+                await db.commit()
     
     async def init_gift_fields_data(self):
         """Инициализация данных полей (1-9)"""
@@ -919,47 +963,100 @@ class Database:
             (9, "Ома", "Пробуждение центральной силы (Кундалини). Всё есть Одно, прямое переживание, трансценденция. В теле: позвоночник. Ощущение: восходящий поток, экстатическая полнота. Цвет: радужный. Стихия: Эфир. Целостность, просветление, активация. Форма - любая, так как содержит в себе все.")
         ]
         
-        async with aiosqlite.connect(self.db_path) as db:
-            for field_id, name, description in fields_data:
-                await db.execute("""
-                    INSERT OR REPLACE INTO gift_fields (id, name, description)
-                    VALUES (?, ?, ?)
-                """, (field_id, name, description))
-            await db.commit()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                async with conn.transaction():
+                    for field_id, name, description in fields_data:
+                        await conn.execute("""
+                            INSERT INTO telegram_gift_fields (id, name, description)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (id) DO UPDATE SET name = $2, description = $3
+                        """, field_id, name, description)
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                for field_id, name, description in fields_data:
+                    await db.execute("""
+                        INSERT OR REPLACE INTO gift_fields (id, name, description)
+                        VALUES (?, ?, ?)
+                    """, (field_id, name, description))
+                await db.commit()
     
     async def get_ma_zhi_kun_position(self, name: str):
         """Получение информации о позиции Ма-Жи-Кун"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM ma_zhi_kun_positions WHERE name = ?", (name,)
-            )
-            return await cursor.fetchone()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                row = await conn.fetchrow(
+                    "SELECT * FROM telegram_ma_zhi_kun_positions WHERE name = $1", name
+                )
+                return row
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT * FROM ma_zhi_kun_positions WHERE name = ?", (name,)
+                )
+                return await cursor.fetchone()
     
     async def get_gift_field(self, field_id: int):
         """Получение информации о поле по ID"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM gift_fields WHERE id = ?", (field_id,)
-            )
-            return await cursor.fetchone()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                row = await conn.fetchrow(
+                    "SELECT * FROM telegram_gift_fields WHERE id = $1", field_id
+                )
+                return row
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT * FROM gift_fields WHERE id = ?", (field_id,)
+                )
+                return await cursor.fetchone()
     
     async def get_all_ma_zhi_kun_positions(self):
         """Получение всех позиций Ма-Жи-Кун"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM ma_zhi_kun_positions ORDER BY name"
-            )
-            return await cursor.fetchall()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                rows = await conn.fetch(
+                    "SELECT * FROM telegram_ma_zhi_kun_positions ORDER BY name"
+                )
+                return rows
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT * FROM ma_zhi_kun_positions ORDER BY name"
+                )
+                return await cursor.fetchall()
     
     async def get_all_gift_fields(self):
         """Получение всех полей"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                "SELECT * FROM gift_fields ORDER BY id"
-            )
-            return await cursor.fetchall()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                rows = await conn.fetch(
+                    "SELECT * FROM telegram_gift_fields ORDER BY id"
+                )
+                return rows
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT * FROM gift_fields ORDER BY id"
+                )
+                return await cursor.fetchall()
 
