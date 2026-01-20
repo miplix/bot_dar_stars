@@ -228,11 +228,12 @@ class Database:
                     trial_end = datetime.now() + timedelta(days=Config.TRIAL_DURATION_DAYS)
                     
                     logger.info(f"Создание нового пользователя {user_id} (username={username}, first_name={first_name})")
-                    await conn.execute("""
-                        INSERT INTO telegram_users 
-                        (user_id, username, first_name, registration_date, subscription_type, subscription_end_date)
-                        VALUES ($1, $2, $3, $4, 'trial', $5)
-                    """, user_id, username, first_name, registration_date, trial_end)
+                    async with conn.transaction():
+                        await conn.execute("""
+                            INSERT INTO telegram_users 
+                            (user_id, username, first_name, registration_date, subscription_type, subscription_end_date)
+                            VALUES ($1, $2, $3, $4, 'trial', $5)
+                        """, user_id, username, first_name, registration_date, trial_end)
                     
                     # Проверяем, что данные сохранились
                     saved_user = await conn.fetchval(
@@ -306,23 +307,47 @@ class Database:
     
     async def update_user_birth_date(self, user_id: int, birth_date: str):
         """Обновление даты рождения пользователя"""
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "UPDATE users SET birth_date = ? WHERE user_id = ?",
-                (birth_date, user_id)
-            )
-            await db.commit()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                async with conn.transaction():
+                    await conn.execute(
+                        "UPDATE telegram_users SET birth_date = $1 WHERE user_id = $2",
+                        birth_date, user_id
+                    )
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "UPDATE users SET birth_date = ? WHERE user_id = ?",
+                    (birth_date, user_id)
+                )
+                await db.commit()
     
     async def save_calculation(self, user_id: int, calc_type: str, birth_date: str, result_data: str):
         """Сохранение результата расчета"""
-        async with aiosqlite.connect(self.db_path) as db:
-            calculation_date = datetime.now().isoformat()
-            await db.execute("""
-                INSERT INTO calculations 
-                (user_id, calculation_type, birth_date, result_data, calculation_date)
-                VALUES (?, ?, ?, ?, ?)
-            """, (user_id, calc_type, birth_date, result_data, calculation_date))
-            await db.commit()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                calculation_date = datetime.now()
+                async with conn.transaction():
+                    await conn.execute("""
+                        INSERT INTO telegram_calculations 
+                        (user_id, calculation_type, birth_date, result_data, calculation_date)
+                        VALUES ($1, $2, $3, $4, $5)
+                    """, user_id, calc_type, birth_date, result_data, calculation_date)
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                calculation_date = datetime.now().isoformat()
+                await db.execute("""
+                    INSERT INTO calculations 
+                    (user_id, calculation_type, birth_date, result_data, calculation_date)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (user_id, calc_type, birth_date, result_data, calculation_date))
+                await db.commit()
     
     async def check_subscription(self, user_id: int) -> dict:
         """Проверка подписки пользователя"""
@@ -384,11 +409,12 @@ class Database:
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
-                await conn.execute("""
-                    UPDATE telegram_users 
-                    SET subscription_type = $1, subscription_end_date = $2
-                    WHERE user_id = $3
-                """, subscription_type, new_end, user_id)
+                async with conn.transaction():
+                    await conn.execute("""
+                        UPDATE telegram_users 
+                        SET subscription_type = $1, subscription_end_date = $2
+                        WHERE user_id = $3
+                    """, subscription_type, new_end, user_id)
             finally:
                 await self._release_pg_connection(conn)
         else:
@@ -536,41 +562,81 @@ class Database:
         logger = logging.getLogger(__name__)
         
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                # Устанавливаем настройки для надежной записи
-                await db.execute("PRAGMA synchronous = NORMAL")
-                
-                # Проверяем, существует ли пользователь
-                cursor = await db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
-                existing_user = await cursor.fetchone()
-                
-                if not existing_user:
-                    # Пользователь не существует - создаем его с правами администратора
-                    registration_date = datetime.now().isoformat()
-                    logger.info(f"Создание нового пользователя {user_id} с правами администратора")
-                    await db.execute("""
-                        INSERT INTO users 
-                        (user_id, username, first_name, registration_date, is_admin)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (user_id, None, None, registration_date, 1 if is_admin else 0))
-                else:
-                    # Пользователь существует - обновляем права
-                    logger.info(f"Обновление прав администратора для пользователя {user_id}: {is_admin}")
-                    await db.execute(
-                        "UPDATE users SET is_admin = ? WHERE user_id = ?",
-                        (1 if is_admin else 0, user_id)
+            if self.use_postgresql:
+                conn = await self._get_pg_connection()
+                try:
+                    # Проверяем, существует ли пользователь
+                    existing_user = await conn.fetchval(
+                        "SELECT user_id FROM telegram_users WHERE user_id = $1", user_id
                     )
-                await db.commit()
-                
-                # Проверяем, что изменения сохранились
-                cursor = await db.execute("SELECT is_admin FROM users WHERE user_id = ?", (user_id,))
-                saved_user = await cursor.fetchone()
-                if not saved_user:
-                    error_msg = f"Пользователь {user_id} не был сохранен в базу данных"
-                    logger.error(error_msg)
-                    raise Exception(error_msg)
-                
-                logger.info(f"Права администратора для пользователя {user_id} успешно сохранены: {is_admin}")
+                    
+                    if not existing_user:
+                        # Пользователь не существует - создаем его с правами администратора
+                        registration_date = datetime.now()
+                        logger.info(f"Создание нового пользователя {user_id} с правами администратора")
+                        async with conn.transaction():
+                            await conn.execute("""
+                                INSERT INTO telegram_users 
+                                (user_id, username, first_name, registration_date, is_admin)
+                                VALUES ($1, $2, $3, $4, $5)
+                            """, user_id, None, None, registration_date, is_admin)
+                    else:
+                        # Пользователь существует - обновляем права
+                        logger.info(f"Обновление прав администратора для пользователя {user_id}: {is_admin}")
+                        async with conn.transaction():
+                            await conn.execute(
+                                "UPDATE telegram_users SET is_admin = $1 WHERE user_id = $2",
+                                is_admin, user_id
+                            )
+                    
+                    # Проверяем, что изменения сохранились
+                    saved_is_admin = await conn.fetchval(
+                        "SELECT is_admin FROM telegram_users WHERE user_id = $1", user_id
+                    )
+                    if saved_is_admin is None:
+                        error_msg = f"Пользователь {user_id} не был сохранен в базу данных"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
+                    
+                    logger.info(f"Права администратора для пользователя {user_id} успешно сохранены: {is_admin}")
+                finally:
+                    await self._release_pg_connection(conn)
+            else:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Устанавливаем настройки для надежной записи
+                    await db.execute("PRAGMA synchronous = NORMAL")
+                    
+                    # Проверяем, существует ли пользователь
+                    cursor = await db.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+                    existing_user = await cursor.fetchone()
+                    
+                    if not existing_user:
+                        # Пользователь не существует - создаем его с правами администратора
+                        registration_date = datetime.now().isoformat()
+                        logger.info(f"Создание нового пользователя {user_id} с правами администратора")
+                        await db.execute("""
+                            INSERT INTO users 
+                            (user_id, username, first_name, registration_date, is_admin)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, (user_id, None, None, registration_date, 1 if is_admin else 0))
+                    else:
+                        # Пользователь существует - обновляем права
+                        logger.info(f"Обновление прав администратора для пользователя {user_id}: {is_admin}")
+                        await db.execute(
+                            "UPDATE users SET is_admin = ? WHERE user_id = ?",
+                            (1 if is_admin else 0, user_id)
+                        )
+                    await db.commit()
+                    
+                    # Проверяем, что изменения сохранились
+                    cursor = await db.execute("SELECT is_admin FROM users WHERE user_id = ?", (user_id,))
+                    saved_user = await cursor.fetchone()
+                    if not saved_user:
+                        error_msg = f"Пользователь {user_id} не был сохранен в базу данных"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
+                    
+                    logger.info(f"Права администратора для пользователя {user_id} успешно сохранены: {is_admin}")
         except Exception as e:
             logger.error(f"Ошибка при сохранении прав администратора для пользователя {user_id}: {e}", exc_info=True)
             raise
@@ -609,12 +675,13 @@ class Database:
                 conn = await self._get_pg_connection()
                 try:
                     created_date = datetime.now()
-                    promo_id = await conn.fetchval("""
-                        INSERT INTO telegram_promocodes 
-                        (code, type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                        RETURNING id
-                    """, code, promo_type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by)
+                    async with conn.transaction():
+                        promo_id = await conn.fetchval("""
+                            INSERT INTO telegram_promocodes 
+                            (code, type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                            RETURNING id
+                        """, code, promo_type, discount_percent, subscription_days, subscription_type, max_uses, created_date, created_by)
                     
                     # Проверяем, что промокод действительно сохранен
                     saved_promo = await conn.fetchrow(
@@ -676,13 +743,24 @@ class Database:
     
     async def check_user_used_promocode(self, user_id: int, promocode_id: int) -> bool:
         """Проверка, использовал ли пользователь промокод"""
-        async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("""
-                SELECT COUNT(*) as count FROM promocode_usage 
-                WHERE user_id = ? AND promocode_id = ?
-            """, (user_id, promocode_id))
-            result = await cursor.fetchone()
-            return result[0] > 0
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                count = await conn.fetchval("""
+                    SELECT COUNT(*) FROM telegram_promocode_usage 
+                    WHERE user_id = $1 AND promocode_id = $2
+                """, user_id, promocode_id)
+                return count > 0
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT COUNT(*) as count FROM promocode_usage 
+                    WHERE user_id = ? AND promocode_id = ?
+                """, (user_id, promocode_id))
+                result = await cursor.fetchone()
+                return result[0] > 0
     
     async def use_promocode(self, user_id: int, promocode_id: int):
         """Зарегистрировать использование промокода"""
@@ -691,17 +769,18 @@ class Database:
             try:
                 usage_date = datetime.now()
                 
-                # Добавляем запись об использовании
-                await conn.execute("""
-                    INSERT INTO telegram_promocode_usage (promocode_id, user_id, usage_date)
-                    VALUES ($1, $2, $3)
-                """, promocode_id, user_id, usage_date)
-                
-                # Увеличиваем счетчик использований
-                await conn.execute("""
-                    UPDATE telegram_promocodes SET current_uses = current_uses + 1
-                    WHERE id = $1
-                """, promocode_id)
+                async with conn.transaction():
+                    # Добавляем запись об использовании
+                    await conn.execute("""
+                        INSERT INTO telegram_promocode_usage (promocode_id, user_id, usage_date)
+                        VALUES ($1, $2, $3)
+                    """, promocode_id, user_id, usage_date)
+                    
+                    # Увеличиваем счетчик использований
+                    await conn.execute("""
+                        UPDATE telegram_promocodes SET current_uses = current_uses + 1
+                        WHERE id = $1
+                    """, promocode_id)
             finally:
                 await self._release_pg_connection(conn)
         else:
@@ -724,11 +803,21 @@ class Database:
     
     async def deactivate_promocode(self, code: str):
         """Деактивировать промокод"""
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                "UPDATE promocodes SET is_active = 0 WHERE code = ?", (code,)
-            )
-            await db.commit()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                async with conn.transaction():
+                    await conn.execute(
+                        "UPDATE telegram_promocodes SET is_active = FALSE WHERE code = $1", code
+                    )
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "UPDATE promocodes SET is_active = 0 WHERE code = ?", (code,)
+                )
+                await db.commit()
     
     async def delete_promocode(self, promo_id: int):
         """Удалить промокод из базы данных"""
@@ -745,12 +834,22 @@ class Database:
     
     async def get_all_promocodes(self):
         """Получить список всех промокодов"""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute("""
-                SELECT * FROM promocodes ORDER BY created_date DESC
-            """)
-            return await cursor.fetchall()
+        if self.use_postgresql:
+            conn = await self._get_pg_connection()
+            try:
+                rows = await conn.fetch("""
+                    SELECT * FROM telegram_promocodes ORDER BY created_date DESC
+                """)
+                return rows
+            finally:
+                await self._release_pg_connection(conn)
+        else:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute("""
+                    SELECT * FROM promocodes ORDER BY created_date DESC
+                """)
+                return await cursor.fetchall()
     
     async def get_promocode_stats(self, code: str):
         """Получить статистику по промокоду"""
