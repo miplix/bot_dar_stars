@@ -345,7 +345,7 @@ class Database:
     async def get_user(self, user_id: int):
         """Получение данных пользователя"""
         if self.use_postgresql:
-            async with self._get_pg_connection() as conn:
+            async with self._pg_connection_ctx() as conn:
                 row = await conn.fetchrow(
                     "SELECT * FROM telegram_users WHERE user_id = $1", user_id
                 )
