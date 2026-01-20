@@ -6,6 +6,7 @@ import aiosqlite
 import asyncpg
 import os
 import asyncio
+import contextlib
 from datetime import datetime, timedelta
 from config import Config
 from urllib.parse import urlparse
@@ -26,20 +27,66 @@ class Database:
             if db_dir:  # Если путь содержит директорию (не корневой файл)
                 os.makedirs(db_dir, exist_ok=True)
         self.pool = None  # Connection pool для PostgreSQL
+        self._pool_loop = None  # Event loop, к которому привязан pool
         
-    async def _get_pg_connection(self):
-        """Получает соединение с PostgreSQL"""
-        if not self.pool:
-            # Создаем connection pool для PostgreSQL
+    async def _ensure_pool(self):
+        """Обеспечивает наличие connection pool для текущего event loop"""
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = asyncio.get_event_loop()
+        
+        # Проверяем, нужно ли пересоздать pool
+        if self.pool is None or (self._pool_loop is not None and self._pool_loop is not current_loop):
+            # Закрываем старый pool, если он существует и привязан к другому loop
+            if self.pool is not None:
+                try:
+                    await self.pool.close()
+                except Exception:
+                    pass  # Игнорируем ошибки при закрытии старого pool
+            
+            # Создаем новый connection pool для текущего event loop
             # Удаляем параметры pgbouncer для прямого подключения
             conn_url = self.database_url.replace('?pgbouncer=true', '').split('?')[0]
-            self.pool = await asyncpg.create_pool(conn_url, min_size=1, max_size=10)
-        return await self.pool.acquire()
+            self.pool = await asyncpg.create_pool(
+                conn_url, 
+                min_size=1, 
+                max_size=10,
+                command_timeout=30  # Таймаут для команд
+            )
+            self._pool_loop = current_loop
+        
+        return self.pool
+    
+    @contextlib.asynccontextmanager
+    async def _pg_connection_ctx(self):
+        """Context manager для получения соединения с PostgreSQL"""
+        pool = await self._ensure_pool()
+        conn = await pool.acquire()
+        try:
+            yield conn
+        finally:
+            try:
+                await pool.release(conn)
+            except Exception:
+                # Игнорируем ошибки при освобождении соединения
+                pass
+    
+    async def _get_pg_connection(self):
+        """Получает соединение с PostgreSQL (для обратной совместимости)"""
+        # ВАЖНО: Этот метод должен использоваться с try/finally и _release_pg_connection
+        # Лучше использовать _pg_connection_ctx() как context manager
+        pool = await self._ensure_pool()
+        return await pool.acquire()
     
     async def _release_pg_connection(self, conn):
         """Освобождает соединение с PostgreSQL"""
-        if self.pool:
-            await self.pool.release(conn)
+        if self.pool and conn:
+            try:
+                await self.pool.release(conn)
+            except Exception:
+                # Игнорируем ошибки при освобождении соединения
+                pass
         
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
@@ -47,8 +94,7 @@ class Database:
             # PostgreSQL - таблицы должны быть созданы через миграцию
             # Проверяем, что таблицы существуют
             try:
-                conn = await self._get_pg_connection()
-                try:
+                async with self._pg_connection_ctx() as conn:
                     # Проверяем наличие таблицы users
                     result = await conn.fetchval("""
                         SELECT EXISTS (
@@ -61,8 +107,6 @@ class Database:
                         print("⚠️ Таблицы не найдены. Примените миграцию: python apply_migration.py")
                     else:
                         print("✅ Таблицы PostgreSQL найдены")
-                finally:
-                    await self._release_pg_connection(conn)
             except Exception as e:
                 print(f"⚠️ Ошибка при проверке PostgreSQL: {e}")
                 print("Примените миграцию вручную через SQL Editor в Vercel Dashboard")
@@ -301,14 +345,11 @@ class Database:
     async def get_user(self, user_id: int):
         """Получение данных пользователя"""
         if self.use_postgresql:
-            conn = await self._get_pg_connection()
-            try:
+            async with self._get_pg_connection() as conn:
                 row = await conn.fetchrow(
                     "SELECT * FROM telegram_users WHERE user_id = $1", user_id
                 )
                 return row
-            finally:
-                await self._release_pg_connection(conn)
         else:
             async with aiosqlite.connect(self.db_path) as db:
                 db.row_factory = aiosqlite.Row
