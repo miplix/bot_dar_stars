@@ -15,7 +15,11 @@ class Database:
     def __init__(self, db_path: str = None, database_url: str = None):
         self.use_postgresql = Config.USE_POSTGRESQL
         self.database_url = database_url or Config.DATABASE_URL
-        self.db_path = db_path or Config.DATABASE_PATH
+        # db_path нужен только для SQLite
+        if self.use_postgresql:
+            self.db_path = db_path  # Может быть None для PostgreSQL
+        else:
+            self.db_path = db_path or getattr(Config, 'DATABASE_PATH', 'data/bot_database.db')
         self.pool = None  # Connection pool для PostgreSQL
         
     async def _get_pg_connection(self):
@@ -60,6 +64,9 @@ class Database:
             return
         
         # SQLite - создаем таблицы
+        # Убеждаемся, что db_path установлен
+        if not self.db_path:
+            self.db_path = getattr(Config, 'DATABASE_PATH', 'data/bot_database.db')
         # Создаем директорию для базы данных, если её нет
         db_dir = os.path.dirname(self.db_path)
         if db_dir:  # Если путь содержит директорию (не корневой файл)
