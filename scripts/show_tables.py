@@ -17,7 +17,7 @@ if sys.platform == 'win32':
 load_dotenv()
 
 # Определяем тип базы данных без импорта Config
-SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://ypxrrjyineyhdrhxdwrk.supabase.co')
+SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://ouodquakgyyeiyihmoxg.supabase.co')
 SUPABASE_API_KEY = os.getenv('SUPABASE_API_KEY', '') or os.getenv('SUPABASE_ANON_KEY', '')
 SUPABASE_DB_URL = os.getenv('SUPABASE_DB_URL', '') or os.getenv('DATABASE_URL', '')
 USE_POSTGRESQL = bool(SUPABASE_DB_URL)

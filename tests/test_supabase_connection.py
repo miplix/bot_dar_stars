@@ -18,7 +18,7 @@ async def test_supabase_api():
     """Тест подключения через Supabase REST API"""
     from supabase import create_client, Client
     
-    supabase_url = os.getenv('SUPABASE_URL', 'https://ypxrrjyineyhdrhxdwrk.supabase.co')
+    supabase_url = os.getenv('SUPABASE_URL', 'https://ouodquakgyyeiyihmoxg.supabase.co')
     supabase_key = os.getenv('SUPABASE_API_KEY', '') or os.getenv('SUPABASE_ANON_KEY', '')
     
     print("=" * 60)
@@ -259,7 +259,7 @@ async def test_supabase_postgres():
 async def main():
     """Главная функция"""
     # Проверяем конфигурацию (без импорта Config, чтобы не требовать BOT_TOKEN)
-    supabase_url = os.getenv('SUPABASE_URL', 'https://ypxrrjyineyhdrhxdwrk.supabase.co')
+    supabase_url = os.getenv('SUPABASE_URL', 'https://ouodquakgyyeiyihmoxg.supabase.co')
     supabase_key = os.getenv('SUPABASE_API_KEY', '') or os.getenv('SUPABASE_ANON_KEY', '')
     database_url = os.getenv('SUPABASE_DB_URL', '') or os.getenv('DATABASE_URL', '')
     
@@ -286,7 +286,7 @@ async def main():
     # Если ничего не настроено
     print("\n⚠️  Supabase не настроен!")
     print("   Добавьте в .env файл:")
-    print("   SUPABASE_URL=https://ypxrrjyineyhdrhxdwrk.supabase.co")
+    print("   SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co")
     print("   SUPABASE_API_KEY=ваш_ключ_здесь")
     print()
     print("   Или:")

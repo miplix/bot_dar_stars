@@ -3,7 +3,7 @@
 ## ✅ Что работает
 
 ### 1. REST API подключение
-- **SUPABASE_URL**: ✅ Настроен (`https://sukhbbohmkbvbivthovp.supabase.co`)
+- **SUPABASE_URL**: ✅ Настроен (`https://ouodquakgyyeiyihmoxg.supabase.co`)
 - **SUPABASE_API_KEY**: ✅ Настроен (service_role ключ)
 - **Статус**: ✅ **РАБОТАЕТ**
 
@@ -18,7 +18,7 @@
 
 ### PostgreSQL прямое подключение
 - **SUPABASE_DB_URL**: ✅ Настроен
-- **Формат**: Direct connection (`db.sukhbbohmkbvbivthovp.supabase.co:5432`)
+- **Формат**: Direct connection (`db.ouodquakgyyeiyihmoxg.supabase.co:5432`)
 - **Проблема**: ❌ DNS не резолвится (`getaddrinfo failed`)
 
 **Возможные причины:**
@@ -72,9 +72,9 @@ postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.co
 ## 📝 Текущая конфигурация
 
 ```env
-SUPABASE_URL=https://sukhbbohmkbvbivthovp.supabase.co
+SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co
 SUPABASE_API_KEY=eyJ... (service_role)
-SUPABASE_DB_URL=postgresql://postgres:***@db.sukhbbohmkbvbivthovp.supabase.co:5432/postgres
+SUPABASE_DB_URL=postgresql://postgres:***@db.ouodquakgyyeiyihmoxg.supabase.co:5432/postgres
 ```
 
 ## ✅ Рекомендации

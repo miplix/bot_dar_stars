@@ -104,7 +104,7 @@ def generate_env_example(config):
     if config['supabase_url']:
         print(f"SUPABASE_URL={config['supabase_url']}")
     else:
-        print("SUPABASE_URL=https://ypxrrjyineyhdrhxdwrk.supabase.co")
+        print("SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co")
     
     if config['supabase_api_key']:
         print(f"SUPABASE_API_KEY={config['supabase_api_key'][:20]}...")

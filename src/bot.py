@@ -3149,16 +3149,28 @@ def check_feature_access(subscription: dict, required_level: str) -> bool:
 async def init_bot_components():
     """Инициализация компонентов бота (база данных, данные и т.д.)"""
     logger.info("Инициализация базы данных...")
-    await db.init_db()
+    try:
+        await db.init_db()
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка при инициализации БД (продолжаю): {e}")
     
     logger.info("Инициализация данных алфавита...")
-    await db.init_alphabet_data()
+    try:
+        await db.init_alphabet_data()
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка при инициализации алфавита (продолжаю): {e}")
     
     logger.info("Инициализация данных позиций Ма-Жи-Кун...")
-    await db.init_ma_zhi_kun_data()
+    try:
+        await db.init_ma_zhi_kun_data()
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка при инициализации позиций Ма-Жи-Кун (продолжаю): {e}")
     
     logger.info("Инициализация данных полей (1-9)...")
-    await db.init_gift_fields_data()
+    try:
+        await db.init_gift_fields_data()
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка при инициализации полей (продолжаю): {e}")
     
     # Инициализация админов из конфига
     if Config.ADMIN_IDS:

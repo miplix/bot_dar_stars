@@ -12,7 +12,7 @@ npm install
 2. Создайте файл `.env.local` на основе существующих переменных окружения:
 ```bash
 # Используйте значения из вашего .env файла
-NEXT_PUBLIC_SUPABASE_URL=https://ypxrrjyineyhdrhxdwrk.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here  # Опционально, для серверных операций
 ```

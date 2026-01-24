@@ -5,7 +5,7 @@
 Создайте файл `.env.local` в корне проекта со следующим содержимым:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://ypxrrjyineyhdrhxdwrk.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=ваш-anon-key
 ```
 

@@ -12,7 +12,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # Получаем настройки Supabase из переменных окружения
-SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://ypxrrjyineyhdrhxdwrk.supabase.co')
+SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://ouodquakgyyeiyihmoxg.supabase.co')
 SUPABASE_API_KEY = os.getenv('SUPABASE_API_KEY', '') or os.getenv('SUPABASE_ANON_KEY', '') or os.getenv('SUPABASE_KEY', '')
 
 # Создаем клиент Supabase

@@ -22,7 +22,7 @@ Supabase - это открытая альтернатива Firebase с PostgreS
 ### 1. Получите URL подключения к базе данных
 
 1. Перейдите на [Supabase Dashboard](https://app.supabase.com/)
-2. Выберите ваш проект (ypxrrjyineyhdrhxdwrk)
+2. Выберите ваш проект (ouodquakgyyeiyihmoxg)
 3. Перейдите в **Settings** → **Database**
 4. Прокрутите вниз до секции **Connection string**
 5. Выберите **Connection pooling** → **Session mode** → **URI** (рекомендуется для приложений)
@@ -30,12 +30,12 @@ Supabase - это открытая альтернатива Firebase с PostgreS
 
 Строка подключения будет выглядеть так:
 ```
-postgresql://postgres.ypxrrjyineyhdrhxdwrk:[YOUR-PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+postgresql://postgres.ouodquakgyyeiyihmoxg:[YOUR-PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true
 ```
 
 Или для direct connection:
 ```
-postgresql://postgres:[YOUR-PASSWORD]@db.ypxrrjyineyhdrhxdwrk.supabase.co:5432/postgres
+postgresql://postgres:[YOUR-PASSWORD]@db.ouodquakgyyeiyihmoxg.supabase.co:5432/postgres
 ```
 
 **⚠️ ВАЖНО:** 
@@ -49,11 +49,11 @@ postgresql://postgres:[YOUR-PASSWORD]@db.ypxrrjyineyhdrhxdwrk.supabase.co:5432/p
 
 ```env
 # Supabase настройки
-SUPABASE_URL=https://ypxrrjyineyhdrhxdwrk.supabase.co
-SUPABASE_DB_URL=postgresql://postgres:YOUR_PASSWORD@db.ypxrrjyineyhdrhxdwrk.supabase.co:5432/postgres
+SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co
+SUPABASE_DB_URL=postgresql://postgres:YOUR_PASSWORD@db.ouodquakgyyeiyihmoxg.supabase.co:5432/postgres
 
 # Или можно использовать общую переменную (для совместимости)
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.ypxrrjyineyhdrhxdwrk.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.ouodquakgyyeiyihmoxg.supabase.co:5432/postgres
 ```
 
 **💡 Совет:** Добавьте `.env` в `.gitignore`, чтобы не коммитить пароли!
@@ -63,7 +63,7 @@ DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.ypxrrjyineyhdrhxdwrk.supabas
 1. Перейдите в ваш проект на Vercel
 2. Перейдите в **Settings** → **Environment Variables**
 3. Добавьте переменные:
-   - `SUPABASE_URL` = `https://ypxrrjyineyhdrhxdwrk.supabase.co`
+   - `SUPABASE_URL` = `https://ouodquakgyyeiyihmoxg.supabase.co`
    - `SUPABASE_DB_URL` = ваша строка подключения PostgreSQL
 
 **🔐 Безопасность:** Для Vercel используйте **Environment Variables** в настройках проекта, не храните пароли в коде!

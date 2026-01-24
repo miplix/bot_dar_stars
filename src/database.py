@@ -5,6 +5,7 @@
 - SQLite - для локальной разработки
 """
 import aiosqlite
+import logging
 import os
 import asyncio
 import contextlib
@@ -769,6 +770,7 @@ class Database:
     
     async def init_alphabet_data(self):
         """Инициализация данных алфавита"""
+        logger = logging.getLogger(__name__)
         alphabet_data = [
             ("А", "Оду", "выбор обусловленный вас в точке внешне. Точка судьбы, точка отправления. Если А оформить в Оду - это О."),
             ("Б", "Братья", "соединяющая, объединяющий."),
@@ -803,15 +805,24 @@ class Database:
         ]
         
         if self.use_supabase_api:
-            payload = [
-                {"letter": letter, "name": name, "description": description}
-                for letter, name, description in alphabet_data
-            ]
-            await self._sb(
-                lambda: self._supabase.table("telegram_alphabet")
-                .upsert(payload, on_conflict="letter")
-                .execute()
-            )
+            try:
+                payload = [
+                    {"letter": letter, "name": name, "description": description}
+                    for letter, name, description in alphabet_data
+                ]
+                await self._sb(
+                    lambda: self._supabase.table("telegram_alphabet")
+                    .upsert(payload, on_conflict="letter")
+                    .execute()
+                )
+            except Exception as e:
+                error_msg = str(e)
+                if "PGRST205" in error_msg or "Could not find the table" in error_msg:
+                    logger.warning(f"⚠️ Таблица telegram_alphabet не найдена в Supabase. Пропускаю инициализацию алфавита.")
+                    logger.warning(f"💡 Создайте таблицу telegram_alphabet в Supabase или выполните миграцию.")
+                else:
+                    logger.error(f"❌ Ошибка при инициализации алфавита: {e}", exc_info=True)
+                    raise
         elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:

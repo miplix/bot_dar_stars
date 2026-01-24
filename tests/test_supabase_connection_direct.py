@@ -140,7 +140,7 @@ async def test_connection():
             print("\n💡 Проблема с DNS:")
             print("   1. Проверьте интернет-соединение")
             print("   2. Проверьте правильность хоста в SUPABASE_DB_URL")
-            print("   3. Попробуйте ping к хосту: ping db.sukhbbohmkbvbivthovp.supabase.co")
+            print("   3. Попробуйте ping к хосту: ping db.ouodquakgyyeiyihmoxg.supabase.co")
         elif 'password authentication failed' in error_msg.lower():
             print("\n💡 Неверный пароль:")
             print("   1. Проверьте пароль в Supabase Dashboard")

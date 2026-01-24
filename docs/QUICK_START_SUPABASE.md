@@ -2,7 +2,7 @@
 
 ## У вас уже есть Supabase проект! ✅
 
-Ваш проект: `ypxrrjyineyhdrhxdwrk`
+Ваш проект: `ouodquakgyyeiyihmoxg`
 
 Все таблицы уже созданы в базе данных.
 
@@ -23,7 +23,7 @@
 ### 1. Получить API ключ
 
 1. Откройте [Supabase Dashboard](https://app.supabase.com/)
-2. Выберите проект `ypxrrjyineyhdrhxdwrk`
+2. Выберите проект `ouodquakgyyeiyihmoxg`
 3. Перейдите **Settings** → **API**
 4. Найдите **Project API keys**
 5. Скопируйте **`anon` key** (публичный ключ) или **`service_role` key** (для полного доступа)
@@ -35,7 +35,7 @@
 #### Локально (`.env` файл):
 
 ```env
-SUPABASE_URL=https://ypxrrjyineyhdrhxdwrk.supabase.co
+SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co
 SUPABASE_API_KEY=ваш_service_role_ключ_здесь
 ```
 
@@ -46,7 +46,7 @@ SUPABASE_API_KEY=ваш_service_role_ключ_здесь
 1. Откройте проект в [Vercel Dashboard](https://vercel.com/dashboard)
 2. **Settings** → **Environment Variables**
 3. Добавьте:
-   - `SUPABASE_URL` = `https://ypxrrjyineyhdrhxdwrk.supabase.co`
+   - `SUPABASE_URL` = `https://ouodquakgyyeiyihmoxg.supabase.co`
    - `SUPABASE_API_KEY` = ваш service_role ключ из шага 1
 
 ### 3. Готово! 🎉
@@ -56,7 +56,7 @@ SUPABASE_API_KEY=ваш_service_role_ключ_здесь
 При запуске вы увидите:
 ```
 🔥 Используется Supabase через REST API (API ключ)
-   URL: https://ypxrrjyineyhdrhxdwrk.supabase.co
+   URL: https://ouodquakgyyeiyihmoxg.supabase.co
 ```
 
 ---
@@ -66,7 +66,7 @@ SUPABASE_API_KEY=ваш_service_role_ключ_здесь
 ### 1. Получить пароль базы данных
 
 1. Откройте [Supabase Dashboard](https://app.supabase.com/)
-2. Выберите проект `ypxrrjyineyhdrhxdwrk`
+2. Выберите проект `ouodquakgyyeiyihmoxg`
 3. Перейдите **Settings** → **Database**
 4. Найдите **Database password**
 5. Если пароля нет, нажмите **Reset database password** и скопируйте новый пароль
@@ -76,7 +76,7 @@ SUPABASE_API_KEY=ваш_service_role_ключ_здесь
 ### 1. Получить пароль базы данных
 
 1. Откройте [Supabase Dashboard](https://app.supabase.com/)
-2. Выберите проект `ypxrrjyineyhdrhxdwrk`
+2. Выберите проект `ouodquakgyyeiyihmoxg`
 3. Перейдите **Settings** → **Database**
 4. Найдите **Database password**
 5. Если пароля нет, нажмите **Reset database password** и скопируйте новый пароль
@@ -87,7 +87,7 @@ SUPABASE_API_KEY=ваш_service_role_ключ_здесь
 
 1. Прокрутите до **Connection string**
 2. Выберите **Connection pooling** → **Session mode**
-3. Скопируйте **URI** (она начинается с `postgresql://postgres.ypxrrjyineyhdrhxdwrk...`)
+3. Скопируйте **URI** (она начинается с `postgresql://postgres.ouodquakgyyeiyihmoxg...`)
 
 Или для прямого подключения:
 
@@ -101,8 +101,8 @@ SUPABASE_API_KEY=ваш_service_role_ключ_здесь
 #### Локально (`.env` файл):
 
 ```env
-SUPABASE_URL=https://ypxrrjyineyhdrhxdwrk.supabase.co
-SUPABASE_DB_URL=postgresql://postgres.ypxrrjyineyhdrhxdwrk:[ВАШ_ПАРОЛЬ]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+SUPABASE_URL=https://ouodquakgyyeiyihmoxg.supabase.co
+SUPABASE_DB_URL=postgresql://postgres.ouodquakgyyeiyihmoxg:[ВАШ_ПАРОЛЬ]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?pgbouncer=true
 ```
 
 **Замените `[ВАШ_ПАРОЛЬ]`** на реальный пароль из шага 1.
@@ -112,7 +112,7 @@ SUPABASE_DB_URL=postgresql://postgres.ypxrrjyineyhdrhxdwrk:[ВАШ_ПАРОЛЬ]
 1. Откройте проект в [Vercel Dashboard](https://vercel.com/dashboard)
 2. **Settings** → **Environment Variables**
 3. Добавьте:
-   - `SUPABASE_URL` = `https://ypxrrjyineyhdrhxdwrk.supabase.co`
+   - `SUPABASE_URL` = `https://ouodquakgyyeiyihmoxg.supabase.co`
    - `SUPABASE_DB_URL` = ваша строка подключения из шага 2
 
 ### 4. Готово! 🎉
@@ -122,7 +122,7 @@ SUPABASE_DB_URL=postgresql://postgres.ypxrrjyineyhdrhxdwrk:[ВАШ_ПАРОЛЬ]
 При запуске вы увидите:
 ```
 🔥 Используется Supabase (прямое подключение PostgreSQL)
-   URL: https://ypxrrjyineyhdrhxdwrk.supabase.co
+   URL: https://ouodquakgyyeiyihmoxg.supabase.co
 ✅ Таблицы Supabase найдены
 ```
 
