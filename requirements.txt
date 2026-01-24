@@ -16,7 +16,7 @@ openai==1.55.3
 python-dateutil==2.9.0
 
 # Utility
-pydantic>=2.10.0
+pydantic==2.9.2
 
 # HTTP requests (для scripts/setup_webhook.py)
 requests==2.31.0
