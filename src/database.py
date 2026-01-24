@@ -23,9 +23,11 @@ class Database:
     """Класс для работы с базой данных"""
     
     def __init__(self, db_path: str = None, database_url: str = None):
-        self.use_postgresql = Config.USE_POSTGRESQL
+        # Приоритет у REST API: если есть SUPABASE_API_KEY, используем его
+        self.use_supabase_api = Config.USE_SUPABASE_API
+        # PostgreSQL только если нет REST API, но есть SUPABASE_DB_URL
+        self.use_postgresql = Config.USE_POSTGRESQL and not self.use_supabase_api
         self.use_supabase = Config.USE_SUPABASE
-        self.use_supabase_api = Config.USE_SUPABASE_API and not self.use_postgresql
         # Используем SUPABASE_DB_URL или DATABASE_URL для подключения к Supabase
         self.database_url = database_url or Config.SUPABASE_DB_URL
         
