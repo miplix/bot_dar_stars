@@ -33,21 +33,45 @@ def _handler_function(req):
                 })
             }
         
-        # Получаем URL webhook из переменных окружения или определяем автоматически
-        # Vercel предоставляет VERCEL_URL в переменных окружения
-        vercel_url = os.getenv('VERCEL_URL')
-        if not vercel_url:
-            # Пытаемся получить из заголовков запроса
-            headers = getattr(req, 'headers', None) or req.get('headers', {})
-            if isinstance(headers, dict) and 'host' in headers:
-                vercel_url = f"https://{headers['host']}"
-            elif hasattr(req, 'headers') and hasattr(req.headers, 'get'):
-                host = req.headers.get('host')
-                if host:
-                    vercel_url = f"https://{host}"
+        # Получаем URL webhook из переменных окружения
+        # Приоритет: WEBHOOK_BASE_URL > VERCEL_URL (но только если это production)
+        # Vercel предоставляет VERCEL_URL в переменных окружения (может быть preview URL)
+        webhook_base_url = os.getenv('WEBHOOK_BASE_URL')
+        if webhook_base_url:
+            # Используем явно указанный URL
+            vercel_url = webhook_base_url
+        else:
+            # Проверяем VERCEL_URL - используем только если это production
+            vercel_url = os.getenv('VERCEL_URL')
+            if vercel_url and 'vercel.app' in vercel_url:
+                # Если это preview URL (содержит дефисы и длинный), используем production
+                if '-' in vercel_url.split('.')[0] and len(vercel_url.split('.')[0]) > 20:
+                    # Это preview URL, используем production
+                    vercel_url = 'bot-dar-stars.vercel.app'
+                else:
+                    # Это production URL
+                    pass
             else:
-                # Используем фиксированный URL из запроса или из переменной
-                vercel_url = os.getenv('WEBHOOK_BASE_URL', 'https://bot-dar-stars-nf4r.vercel.app')
+                # Пытаемся получить из заголовков запроса
+                headers = getattr(req, 'headers', None) or req.get('headers', {})
+                if isinstance(headers, dict) and 'host' in headers:
+                    host = headers['host']
+                    # Если это preview URL, используем production
+                    if '-' in host.split('.')[0] and len(host.split('.')[0]) > 20:
+                        vercel_url = 'bot-dar-stars.vercel.app'
+                    else:
+                        vercel_url = f"https://{host}"
+                elif hasattr(req, 'headers') and hasattr(req.headers, 'get'):
+                    host = req.headers.get('host')
+                    if host:
+                        # Если это preview URL, используем production
+                        if '-' in host.split('.')[0] and len(host.split('.')[0]) > 20:
+                            vercel_url = 'bot-dar-stars.vercel.app'
+                        else:
+                            vercel_url = f"https://{host}"
+                else:
+                    # Используем production URL по умолчанию
+                    vercel_url = 'bot-dar-stars.vercel.app'
         
         # Убираем http:// или https:// если есть
         vercel_url = vercel_url.replace('http://', '').replace('https://', '')

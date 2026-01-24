@@ -70,6 +70,10 @@ def _handler_function(req):
         dict: ответ в формате Vercel
     """
     try:
+        # Логируем входящий запрос
+        method = getattr(req, 'method', None) or (req.get('method', 'GET') if isinstance(req, dict) else 'GET')
+        logger.info(f"📥 Входящий запрос: {method}")
+        
         # Проверяем наличие компонентов
         if dp is None or bot is None:
             error_msg = 'Bot components not initialized'
@@ -88,7 +92,6 @@ def _handler_function(req):
             }
         
         # Обработка GET запроса (для проверки работоспособности)
-        method = getattr(req, 'method', None) or (req.get('method', 'GET') if isinstance(req, dict) else 'GET')
         if method == 'GET':
             return {
                 'statusCode': 200,
@@ -109,7 +112,9 @@ def _handler_function(req):
         
         # Получаем тело запроса
         body = getattr(req, 'body', None) or (req.get('body', None) if isinstance(req, dict) else None)
+        logger.info(f"📦 Тело запроса получено: {body is not None}, тип: {type(body)} if body else None)}")
         if body is None:
+            logger.warning("⚠️ Пустое тело запроса")
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json'},
