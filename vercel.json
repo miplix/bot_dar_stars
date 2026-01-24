@@ -4,11 +4,11 @@
   "rewrites": [
     {
       "source": "/api/webhook",
-      "destination": "/api/webhook.py"
+      "destination": "/api/webhook"
     },
     {
       "source": "/api/setup-webhook",
-      "destination": "/api/setup_webhook.py"
+      "destination": "/api/setup_webhook"
     }
   ],
   "env": {
