@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "python3.12 --version || echo 'Python 3.12 not found, using default'",
   "rewrites": [
     {
       "source": "/api/webhook",
@@ -12,8 +11,7 @@
     }
   ],
   "env": {
-    "PYTHONPATH": ".",
-    "PYTHON_VERSION": "3.12.0"
+    "PYTHONPATH": "."
   }
 }
 
