@@ -47,7 +47,7 @@ async def ensure_initialized():
 # Импортируем компоненты бота
 try:
     logger.info("Импорт компонентов бота...")
-    from bot import dp, bot, init_bot_components
+    from src.bot import dp, bot, init_bot_components
     logger.info("Компоненты бота успешно импортированы")
 except Exception as e:
     _import_error = str(e)
