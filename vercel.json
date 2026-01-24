@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/webhook",
-      "dest": "api/webhook.py"
+      "source": "/api/webhook",
+      "destination": "/api/webhook.py"
     },
     {
-      "src": "/api/setup-webhook",
-      "dest": "api/setup_webhook.py"
+      "source": "/api/setup-webhook",
+      "destination": "/api/setup_webhook.py"
     }
   ],
   "env": {
