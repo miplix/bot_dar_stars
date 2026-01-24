@@ -6,12 +6,13 @@ import os
 import json
 import logging
 import requests
+from http.server import BaseHTTPRequestHandler
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def handler(req):
+def _handler_function(req):
     """
     Обработчик для установки webhook
     Можно вызвать вручную или через Vercel deployment webhook
@@ -110,4 +111,45 @@ def handler(req):
                 'error': str(e)
             })
         }
+
+# Определяем класс handler для Vercel (он ожидает класс, наследующий BaseHTTPRequestHandler)
+class handler(BaseHTTPRequestHandler):
+    """Класс handler для Vercel Python runtime"""
+    
+    def do_GET(self):
+        """Обработка GET запроса"""
+        result = _handler_function({
+            'method': 'GET',
+            'body': None,
+            'headers': dict(self.headers)
+        })
+        self.send_response(result['statusCode'])
+        for key, value in result['headers'].items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(result['body'].encode('utf-8'))
+    
+    def do_POST(self):
+        """Обработка POST запроса"""
+        # Читаем тело запроса
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length) if content_length > 0 else b''
+        
+        # Создаем объект запроса
+        req_obj = {
+            'method': 'POST',
+            'body': body.decode('utf-8') if body else None,
+            'headers': dict(self.headers)
+        }
+        
+        result = _handler_function(req_obj)
+        self.send_response(result['statusCode'])
+        for key, value in result['headers'].items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(result['body'].encode('utf-8'))
+    
+    def log_message(self, format, *args):
+        """Переопределяем логирование"""
+        logger.info(f"{self.address_string()} - {format % args}")
 
