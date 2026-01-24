@@ -5,13 +5,19 @@
 - SQLite - для локальной разработки
 """
 import aiosqlite
-import asyncpg
 import os
 import asyncio
 import contextlib
 from datetime import datetime, timedelta
 from src.config import Config
 from urllib.parse import urlparse
+from supabase import create_client
+from dateutil.parser import isoparse
+
+try:
+    import asyncpg
+except Exception:
+    asyncpg = None
 
 class Database:
     """Класс для работы с базой данных"""
@@ -19,6 +25,7 @@ class Database:
     def __init__(self, db_path: str = None, database_url: str = None):
         self.use_postgresql = Config.USE_POSTGRESQL
         self.use_supabase = Config.USE_SUPABASE
+        self.use_supabase_api = Config.USE_SUPABASE_API and not self.use_postgresql
         # Используем SUPABASE_DB_URL или DATABASE_URL для подключения к Supabase
         self.database_url = database_url or Config.SUPABASE_DB_URL
         
@@ -34,6 +41,30 @@ class Database:
         
         self.pool = None  # Connection pool для PostgreSQL/Supabase
         self._pool_loop = None  # Event loop, к которому привязан pool
+        self._supabase = None
+        if self.use_supabase_api:
+            self._supabase = create_client(Config.SUPABASE_URL, Config.SUPABASE_API_KEY)
+        elif self.use_postgresql and asyncpg is None:
+            raise RuntimeError(
+                "asyncpg не установлен, но требуется PostgreSQL. "
+                "Установите asyncpg или используйте SUPABASE_API_KEY без SUPABASE_DB_URL."
+            )
+
+    async def _sb(self, fn):
+        """Запускает синхронный вызов Supabase в отдельном потоке."""
+        return await asyncio.to_thread(fn)
+
+    @staticmethod
+    def _parse_dt(value):
+        if value is None or isinstance(value, datetime):
+            return value
+        try:
+            return isoparse(value)
+        except Exception:
+            try:
+                return datetime.fromisoformat(value)
+            except Exception:
+                return None
         
     async def _ensure_pool(self):
         """Обеспечивает наличие connection pool для текущего event loop"""
@@ -105,6 +136,14 @@ class Database:
         
     async def init_db(self):
         """Инициализация базы данных и создание таблиц"""
+        if self.use_supabase_api:
+            try:
+                await self._sb(lambda: self._supabase.table("telegram_users").select("user_id").limit(1).execute())
+                print("✅ Таблицы Supabase доступны (REST API)")
+            except Exception as e:
+                print(f"⚠️ Ошибка при проверке Supabase REST API: {e}")
+                print("Проверьте SUPABASE_URL и SUPABASE_API_KEY")
+            return
         if self.use_postgresql:
             # PostgreSQL - таблицы должны быть созданы через миграцию
             # Проверяем, что таблицы существуют
@@ -290,7 +329,37 @@ class Database:
         logger = logging.getLogger(__name__)
         
         try:
-            if self.use_postgresql:
+            if self.use_supabase_api:
+                existing = await self._sb(
+                    lambda: self._supabase.table("telegram_users")
+                    .select("user_id")
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                )
+                if existing.data:
+                    logger.debug(f"Пользователь {user_id} уже существует в Supabase")
+                    return
+
+                registration_date = datetime.now().isoformat()
+                trial_end = (datetime.now() + timedelta(days=Config.TRIAL_DURATION_DAYS)).isoformat()
+
+                await self._sb(
+                    lambda: self._supabase.table("telegram_users")
+                    .insert(
+                        {
+                            "user_id": user_id,
+                            "username": username,
+                            "first_name": first_name,
+                            "registration_date": registration_date,
+                            "subscription_type": "trial",
+                            "subscription_end_date": trial_end,
+                        }
+                    )
+                    .execute()
+                )
+                logger.info(f"Пользователь {user_id} успешно сохранен в Supabase")
+            elif self.use_postgresql:
                 # PostgreSQL
                 conn = await self._get_pg_connection()
                 try:
@@ -368,6 +437,15 @@ class Database:
     
     async def get_user(self, user_id: int):
         """Получение данных пользователя"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_users")
+                .select("*")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
         if self.use_postgresql:
             async with self._pg_connection_ctx() as conn:
                 row = await conn.fetchrow(
@@ -384,7 +462,14 @@ class Database:
     
     async def update_user_birth_date(self, user_id: int, birth_date: str):
         """Обновление даты рождения пользователя"""
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            await self._sb(
+                lambda: self._supabase.table("telegram_users")
+                .update({"birth_date": birth_date})
+                .eq("user_id", user_id)
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 async with conn.transaction():
@@ -404,7 +489,22 @@ class Database:
     
     async def save_calculation(self, user_id: int, calc_type: str, birth_date: str, result_data: str):
         """Сохранение результата расчета"""
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            calculation_date = datetime.now().isoformat()
+            await self._sb(
+                lambda: self._supabase.table("telegram_calculations")
+                .insert(
+                    {
+                        "user_id": user_id,
+                        "calculation_type": calc_type,
+                        "birth_date": birth_date,
+                        "result_data": result_data,
+                        "calculation_date": calculation_date,
+                    }
+                )
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 calculation_date = datetime.now()
@@ -434,10 +534,7 @@ class Database:
         
         if user['subscription_end_date']:
             # PostgreSQL/Supabase возвращает datetime объект, SQLite - строку
-            if isinstance(user['subscription_end_date'], str):
-                end_date = datetime.fromisoformat(user['subscription_end_date'])
-            else:
-                end_date = user['subscription_end_date']
+            end_date = self._parse_dt(user['subscription_end_date'])
             
             if datetime.now() < end_date:
                 return {
@@ -477,10 +574,7 @@ class Database:
         # Иначе начинаем с текущего момента
         if user and user.get('subscription_end_date'):
             # PostgreSQL/Supabase возвращает datetime, SQLite - строку
-            if isinstance(user['subscription_end_date'], str):
-                current_end = datetime.fromisoformat(user['subscription_end_date'])
-            else:
-                current_end = user['subscription_end_date']
+            current_end = self._parse_dt(user['subscription_end_date'])
             if current_end > datetime.now():
                 new_end = current_end + timedelta(days=days)
             else:
@@ -488,7 +582,19 @@ class Database:
         else:
             new_end = datetime.now() + timedelta(days=days)
         
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            await self._sb(
+                lambda: self._supabase.table("telegram_users")
+                .update(
+                    {
+                        "subscription_type": subscription_type,
+                        "subscription_end_date": new_end.isoformat(),
+                    }
+                )
+                .eq("user_id", user_id)
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 async with conn.transaction():
@@ -515,7 +621,22 @@ class Database:
         """Добавление записи о платеже"""
         payment_date = datetime.now()
         
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            await self._sb(
+                lambda: self._supabase.table("telegram_payments")
+                .insert(
+                    {
+                        "user_id": user_id,
+                        "amount": amount,
+                        "currency": currency,
+                        "payment_date": payment_date.isoformat(),
+                        "subscription_type": subscription_type,
+                        "status": status,
+                    }
+                )
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 async with conn.transaction():
@@ -557,6 +678,22 @@ class Database:
     
     async def get_subscription_stats(self):
         """Получение статистики по подпискам"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_users")
+                .select("subscription_type, subscription_end_date")
+                .execute()
+            )
+            stats = {}
+            now = datetime.now()
+            for row in result.data or []:
+                sub_type = row.get("subscription_type") or "unknown"
+                stats.setdefault(sub_type, {"count": 0, "active": 0})
+                stats[sub_type]["count"] += 1
+                end_date = self._parse_dt(row.get("subscription_end_date"))
+                if end_date and now < end_date:
+                    stats[sub_type]["active"] += 1
+            return [(k, v["count"], v["active"]) for k, v in stats.items()]
         if self.use_postgresql:
             async with self._pg_connection_ctx() as conn:
                 rows = await conn.fetch("""
@@ -582,6 +719,18 @@ class Database:
     
     async def get_all_users_with_subscriptions(self, limit: int = 50):
         """Получение списка пользователей с подписками"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_users")
+                .select(
+                    "user_id, username, first_name, registration_date, "
+                    "subscription_type, subscription_end_date, is_admin"
+                )
+                .order("registration_date", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return result.data
         if self.use_postgresql:
             async with self._pg_connection_ctx() as conn:
                 rows = await conn.fetch("""
@@ -651,7 +800,17 @@ class Database:
             ("Я", "ЙА", "состоит из Й + А. Если И оплодотворить райдой + Оду (точка судьбы, выбор)")
         ]
         
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            payload = [
+                {"letter": letter, "name": name, "description": description}
+                for letter, name, description in alphabet_data
+            ]
+            await self._sb(
+                lambda: self._supabase.table("telegram_alphabet")
+                .upsert(payload, on_conflict="letter")
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 async with conn.transaction():
@@ -674,6 +833,15 @@ class Database:
     
     async def get_letter_meaning(self, letter: str):
         """Получение значения буквы"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_alphabet")
+                .select("*")
+                .eq("letter", letter.upper())
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
@@ -693,6 +861,14 @@ class Database:
     
     async def get_all_alphabet(self):
         """Получение всего алфавита"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_alphabet")
+                .select("*")
+                .order("id")
+                .execute()
+            )
+            return result.data
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
@@ -726,7 +902,36 @@ class Database:
         logger = logging.getLogger(__name__)
         
         try:
-            if self.use_postgresql:
+            if self.use_supabase_api:
+                existing = await self._sb(
+                    lambda: self._supabase.table("telegram_users")
+                    .select("user_id")
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                )
+                if existing.data:
+                    await self._sb(
+                        lambda: self._supabase.table("telegram_users")
+                        .update({"is_admin": is_admin})
+                        .eq("user_id", user_id)
+                        .execute()
+                    )
+                else:
+                    registration_date = datetime.now().isoformat()
+                    await self._sb(
+                        lambda: self._supabase.table("telegram_users")
+                        .insert(
+                            {
+                                "user_id": user_id,
+                                "registration_date": registration_date,
+                                "is_admin": is_admin,
+                            }
+                        )
+                        .execute()
+                    )
+                logger.info(f"Права администратора для пользователя {user_id} успешно сохранены: {is_admin}")
+            elif self.use_postgresql:
                 conn = await self._get_pg_connection()
                 try:
                     # Проверяем, существует ли пользователь
@@ -843,7 +1048,31 @@ class Database:
         logger = logging.getLogger(__name__)
         
         try:
-            if self.use_postgresql:
+            if self.use_supabase_api:
+                created_date = datetime.now().isoformat()
+                result = await self._sb(
+                    lambda: self._supabase.table("telegram_promocodes")
+                    .insert(
+                        {
+                            "code": code,
+                            "type": promo_type,
+                            "discount_percent": discount_percent,
+                            "subscription_days": subscription_days,
+                            "subscription_type": subscription_type,
+                            "max_uses": max_uses,
+                            "created_date": created_date,
+                            "created_by": created_by,
+                            "current_uses": 0,
+                            "is_active": True,
+                        }
+                    )
+                    .execute()
+                )
+                promo = result.data[0] if result.data else None
+                if not promo:
+                    raise Exception(f"Промокод {code} не был сохранен в базе данных")
+                logger.info(f"Промокод {code} успешно создан с ID {promo.get('id')}")
+            elif self.use_postgresql:
                 # PostgreSQL
                 conn = await self._get_pg_connection()
                 try:
@@ -897,6 +1126,16 @@ class Database:
     
     async def get_promocode(self, code: str):
         """Получение промокода по коду"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_promocodes")
+                .select("*")
+                .eq("code", code)
+                .eq("is_active", True)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
@@ -916,6 +1155,16 @@ class Database:
     
     async def check_user_used_promocode(self, user_id: int, promocode_id: int) -> bool:
         """Проверка, использовал ли пользователь промокод"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_promocode_usage")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("promocode_id", promocode_id)
+                .limit(1)
+                .execute()
+            )
+            return bool(result.data)
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
@@ -937,7 +1186,36 @@ class Database:
     
     async def use_promocode(self, user_id: int, promocode_id: int):
         """Зарегистрировать использование промокода"""
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            usage_date = datetime.now().isoformat()
+            await self._sb(
+                lambda: self._supabase.table("telegram_promocode_usage")
+                .insert(
+                    {
+                        "promocode_id": promocode_id,
+                        "user_id": user_id,
+                        "usage_date": usage_date,
+                    }
+                )
+                .execute()
+            )
+            current = await self._sb(
+                lambda: self._supabase.table("telegram_promocodes")
+                .select("current_uses")
+                .eq("id", promocode_id)
+                .limit(1)
+                .execute()
+            )
+            current_uses = 0
+            if current.data:
+                current_uses = current.data[0].get("current_uses") or 0
+            await self._sb(
+                lambda: self._supabase.table("telegram_promocodes")
+                .update({"current_uses": current_uses + 1})
+                .eq("id", promocode_id)
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 usage_date = datetime.now()
@@ -976,7 +1254,14 @@ class Database:
     
     async def deactivate_promocode(self, code: str):
         """Деактивировать промокод"""
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            await self._sb(
+                lambda: self._supabase.table("telegram_promocodes")
+                .update({"is_active": False})
+                .eq("code", code)
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 async with conn.transaction():
@@ -994,7 +1279,20 @@ class Database:
     
     async def delete_promocode(self, promo_id: int):
         """Удалить промокод из базы данных"""
-        if self.use_postgresql:
+        if self.use_supabase_api:
+            await self._sb(
+                lambda: self._supabase.table("telegram_promocode_usage")
+                .delete()
+                .eq("promocode_id", promo_id)
+                .execute()
+            )
+            await self._sb(
+                lambda: self._supabase.table("telegram_promocodes")
+                .delete()
+                .eq("id", promo_id)
+                .execute()
+            )
+        elif self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
                 async with conn.transaction():
@@ -1022,6 +1320,14 @@ class Database:
     
     async def get_all_promocodes(self):
         """Получить список всех промокодов"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_promocodes")
+                .select("*")
+                .order("created_date", desc=True)
+                .execute()
+            )
+            return result.data
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
@@ -1136,6 +1442,15 @@ class Database:
     
     async def get_ma_zhi_kun_position(self, name: str):
         """Получение информации о позиции Ма-Жи-Кун"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_ma_zhi_kun_positions")
+                .select("*")
+                .eq("name", name)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
@@ -1155,6 +1470,15 @@ class Database:
     
     async def get_gift_field(self, field_id: int):
         """Получение информации о поле по ID"""
+        if self.use_supabase_api:
+            result = await self._sb(
+                lambda: self._supabase.table("telegram_gift_fields")
+                .select("*")
+                .eq("id", field_id)
+                .limit(1)
+                .execute()
+            )
+            return result.data[0] if result.data else None
         if self.use_postgresql:
             conn = await self._get_pg_connection()
             try:
