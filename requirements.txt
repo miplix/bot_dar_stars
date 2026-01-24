@@ -1,5 +1,5 @@
 # Telegram Bot
-aiogram==3.13.1
+aiogram>=3.24.0
 aiohttp==3.10.10
 
 # Environment variables
@@ -16,7 +16,7 @@ openai==1.55.3
 python-dateutil==2.9.0
 
 # Utility
-pydantic==2.9.2
+pydantic>=2.10.0
 
 # HTTP requests (для scripts/setup_webhook.py)
 requests==2.31.0
