@@ -112,7 +112,7 @@ def _handler_function(req):
         
         # Получаем тело запроса
         body = getattr(req, 'body', None) or (req.get('body', None) if isinstance(req, dict) else None)
-        logger.info(f"📦 Тело запроса получено: {body is not None}, тип: {type(body)} if body else None)}")
+        logger.info(f"📦 Тело запроса получено: {body is not None}, тип: {type(body) if body else None}")
         if body is None:
             logger.warning("⚠️ Пустое тело запроса")
             return {
